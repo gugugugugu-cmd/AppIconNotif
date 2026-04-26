@@ -1,9 +1,7 @@
 package com.example.appiconnotif
 
 import android.app.Notification
-import android.content.res.ColorStateList
 import android.graphics.Color
-import android.graphics.PorterDuff
 import android.graphics.drawable.ColorDrawable
 import android.graphics.drawable.Icon
 import android.os.Build
@@ -33,8 +31,26 @@ class NotificationIconHook : IXposedHookLoadPackage {
 
         log("Loaded into: ${lpparam.packageName}")
 
-        hookNotificationHeaderViewWrapper(lpparam)
-        hookNotificationRowIconView(lpparam)
+        try {
+            hookNotificationHeaderViewWrapper(lpparam)
+        } catch (t: Throwable) {
+            log("hookNotificationHeaderViewWrapper failed")
+            log(t)
+        }
+
+        try {
+            hookNotificationRowIconView(lpparam)
+        } catch (t: Throwable) {
+            log("hookNotificationRowIconView failed")
+            log(t)
+        }
+
+        try {
+            StatusbarAppIconHook.hook(lpparam)
+        } catch (t: Throwable) {
+            log("StatusbarAppIconHook failed")
+            log(t)
+        }
     }
 
     private fun hookNotificationHeaderViewWrapper(lpparam: XC_LoadPackage.LoadPackageParam) {
@@ -191,7 +207,10 @@ class NotificationIconHook : IXposedHookLoadPackage {
         }
     }
 
-    private fun applyOriginalAppIcon(imageView: ImageView, drawable: android.graphics.drawable.Drawable) {
+    private fun applyOriginalAppIcon(
+        imageView: ImageView,
+        drawable: android.graphics.drawable.Drawable
+    ) {
         try {
             clearIconStyling(imageView)
 
