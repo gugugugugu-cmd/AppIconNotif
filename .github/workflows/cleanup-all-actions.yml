@@ -1,68 +1,54 @@
-name: Cleanup All Actions Data
+name: Clean Android Build Artifacts
 
 on:
-  workflow_dispatch:
+  workflow_dispatch:                    # 手动触发（推荐）
+  schedule:
+ 
+   push:
+    branches: [ "main", "master" ]
+    paths:
+      - '.github/workflows/clean-android-build.yml'   # 仅此文件改动时触发
 
 jobs:
-  cleanup:
+  clean:
+    name: Clean All Previous Android Builds
     runs-on: ubuntu-latest
-
     permissions:
-      actions: write
-      contents: read
+      contents: write        # 需要此权限才能提交清理后的改动
 
     steps:
-      - name: Delete all artifacts and workflow runs
-        uses: actions/github-script@v7
+      - name: Checkout repository
+        uses: actions/checkout@v4
         with:
-          script: |
-            const owner = context.repo.owner;
-            const repo = context.repo.repo;
+          fetch-depth: 0
 
-            let deletedArtifacts = 0;
-            let deletedRuns = 0;
+      - name: Clean Android build artifacts
+        run: |
+          echo "🧹 开始清理 Android 构建产物..."
 
-            // 删除所有 artifacts
-            let artifactPage = 1;
-            while (true) {
-              const { data } = await github.rest.actions.listArtifactsForRepo({
-                owner,
-                repo,
-                per_page: 100,
-                page: artifactPage
-              });
+          # 删除最主要的构建目录
+          rm -rf app/build
+          rm -rf build
+          rm -rf .gradle
+          rm -rf app/.cxx          # NDK 相关缓存
+          rm -rf */build           # 删除所有模块的 build 目录
 
-              const artifacts = data.artifacts || [];
-              if (artifacts.length === 0 break.info(`} await,
- }
+          # 清理常见临时文件和缓存
+          rm -f *.apk *.aab
+          rm -f app/build/outputs/apk/**/*.apk
+          rm -f app/build/outputs/bundle/**/*.aab
 
-Page }.listWorkflowRunsForRepo({
-                owner,
-                repo,
-                per_page: 100,
-                page: runPage
-              });
+          # 清理 Gradle 缓存（可选，但推荐定期清理）
+          rm -rf \~/.gradle/caches
+          rm -rf \~/.gradle/wrapper
 
-              const runs = data.workflow_runs || [];
-              if (runs.length === 0) break;
+          echo "✅ Android 构建产物清理完成。"
 
-              for (const run of runs) {
-                // 跳过当前正在执行的这一次，避免自删
-                if (run.id === context.runId) {
-                  core.info(`Skipping current run: ${run.name} (id: ${run.id})`);
-                  continue;
-                }
-
-                core.info(`Deleting workflow run: ${run.name} (id: ${run.id})`);
-                await github.rest.actions.deleteWorkflowRun({
-                  owner,
-                  repo,
-                  run_id: run.id
-                });
-                deletedRuns++;
-              }
-
-              runPage++;
-            }
-
-            core.info(`Done. Deleted ${deletedArtifacts} artifacts and ${deletedRuns} workflow runs.`);
+      - name: Commit and push cleanup changes
+        uses: stefanzweifel/git-auto-commit-action@v5
+        with:
+          commit_message: "chore: clean previous Android build artifacts"
+          commit_options: '--no-verify'
+          file_pattern: '.'
+          branch: ${{ github.ref_name }}
+          skip_dirty_check: false
