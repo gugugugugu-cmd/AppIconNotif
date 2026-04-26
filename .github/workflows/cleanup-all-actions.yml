@@ -1,20 +1,20 @@
 name: Clean Android Build Artifacts
 
 on:
-  workflow_dispatch:                    # 手动触发（推荐）
+  workflow_dispatch:
   schedule:
- 
-   push:
+    - cron: '0 4 * * 0'
+  push:
     branches: [ "main", "master" ]
     paths:
-      - '.github/workflows/clean-android-build.yml'   # 仅此文件改动时触发
+      - '.github/workflows/clean-android-build.yml'
 
 jobs:
   clean:
     name: Clean All Previous Android Builds
     runs-on: ubuntu-latest
     permissions:
-      contents: write        # 需要此权限才能提交清理后的改动
+      contents: write
 
     steps:
       - name: Checkout repository
@@ -26,19 +26,19 @@ jobs:
         run: |
           echo "🧹 开始清理 Android 构建产物..."
 
-          # 删除最主要的构建目录
+          # 删除主要的构建目录
           rm -rf app/build
           rm -rf build
           rm -rf .gradle
-          rm -rf app/.cxx          # NDK 相关缓存
-          rm -rf */build           # 删除所有模块的 build 目录
+          rm -rf app/.cxx
+          rm -rf */build
 
-          # 清理常见临时文件和缓存
+          # 删除生成的 APK / AAB 文件
           rm -f *.apk *.aab
           rm -f app/build/outputs/apk/**/*.apk
           rm -f app/build/outputs/bundle/**/*.aab
 
-          # 清理 Gradle 缓存（可选，但推荐定期清理）
+          # 清理 Gradle 缓存
           rm -rf \~/.gradle/caches
           rm -rf \~/.gradle/wrapper
 
@@ -51,4 +51,3 @@ jobs:
           commit_options: '--no-verify'
           file_pattern: '.'
           branch: ${{ github.ref_name }}
-          skip_dirty_check: false
