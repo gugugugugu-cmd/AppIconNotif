@@ -1,54 +1,42 @@
-name: Clean Android Build Artifacts
+name: Clean All Workflow Runs (One-time Cleanup)
 
 on:
-  workflow_dispatch:   # 主要通过手动触发清理
+  workflow_dispatch:        # 只能手动触发，防止意外运行
 
 jobs:
-  clean:
-    name: Clean All Previous Android Builds
+  cleanup:
+    name: Delete All Previous Workflow Runs
     runs-on: ubuntu-latest
     permissions:
-      contents: write
+      actions: write        # 必须有此权限才能删除 workflow runs
 
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
-        with:
-          fetch-depth: 0
 
-      - name: Clean Android build artifacts
-        id: cleanup
+      - name: Delete ALL workflow runs (except current one)
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
-          echo "🧹 开始清理 Android 构建产物..."
+          echo "🧹 开始清理所有旧的 Workflow Runs..."
 
-          # 彻底清理所有常见的构建目录和缓存
-          rm -rf app/build
-          rm -rf build
-          rm -rf .gradle
-          rm -rf app/.cxx
-          rm -rf */build
-          rm -rf \~/.gradle/caches
-          rm -rf \~/.gradle/wrapper
+          # 获取当前运行的 ID（避免删除自己）
+          CURRENT_RUN_ID=${{ github.run_id }}
 
-          # 删除生成的 APK / AAB 文件
-          rm -f *.apk *.aab
-          rm -f app/build/outputs/apk/**/*.apk
-          rm -f app/build/outputs/bundle/**/*.aab
+          echo "当前运行 ID: $CURRENT_RUN_ID"
 
-          # 检查是否有实际变化
-          if git status --porcelain | grep -q .; then
-            echo "has_changes=true" >> $GITHUB_OUTPUT
-            echo "✅ 检测到文件变化，将提交清理结果。"
-          else
-            echo "has_changes=false" >> $GITHUB_OUTPUT
-            echo "ℹ️ 没有需要清理的文件，跳过 commit。"
-          fi
+          # 使用 gh CLI 删除所有 workflow runs（分页处理）
+          echo "正在获取并删除所有旧的 workflow runs..."
 
-      - name: Commit and push cleanup changes
-        if: steps.cleanup.outputs.has_changes == 'true'
-        uses: stefanzweifel/git-auto-commit-action@v5
-        with:
-          commit_message: "chore: clean previous Android build artifacts"
-          commit_options: '--no-verify'
-          file_pattern: '.'
-          branch: ${{ github.ref_name }}
+          gh run list --repo ${{ github.repository }} --limit 500 --json databaseId -q '.[].databaseId' | \
+          while read -r run_id; do
+            if [ "$run_id" != "$CURRENT_RUN_ID" ]; then
+              echo "Deleting run ID: $run_id"
+              gh run delete "$run_id" --repo ${{ github.repository }} || echo "Failed to delete $run_id (maybe already deleted)"
+            else
+              echo "跳过当前运行: $run_id"
+            fi
+          done
+
+          echo "✅ 清理完成！Actions 历史记录已基本清空。"
+          echo "注意：刷新页面后应该会看到非常干净的列表。"
