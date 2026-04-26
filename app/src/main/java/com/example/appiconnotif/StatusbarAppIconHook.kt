@@ -42,8 +42,6 @@ object StatusbarAppIconHook {
             hookIconState(iconStateClass)
             hookUpdateIconColor(statusBarIconViewClass)
             hookGetIcon(statusBarIconViewClass, lpparam)
-
-            log("StatusbarAppIconHook initialized")
         } catch (t: Throwable) {
             log("Failed to initialize StatusbarAppIconHook")
             log(t)
@@ -66,13 +64,11 @@ object StatusbarAppIconHook {
                             for (icon in iconStates.keys) {
                                 removeTintForStatusbarIcon(icon, false)
                             }
-                        } catch (t: Throwable) {
-                            log(t)
+                        } catch (_: Throwable) {
                         }
                     }
                 }
             )
-            log("Hooked NotificationIconContainer.applyIconStates")
         } catch (t: Throwable) {
             log("Failed to hook applyIconStates")
             log(t)
@@ -90,8 +86,7 @@ object StatusbarAppIconHook {
                         false
                     }
                     removeTintForStatusbarIcon(icon, isNotification)
-                } catch (t: Throwable) {
-                    log(t)
+                } catch (_: Throwable) {
                 }
             }
         }
@@ -103,9 +98,8 @@ object StatusbarAppIconHook {
                 View::class.java,
                 hook
             )
-            log("Hooked IconState.initFrom")
         } catch (t: Throwable) {
-            log("Failed to hook initFrom")
+            log("Failed to hook IconState.initFrom")
             log(t)
         }
 
@@ -116,9 +110,8 @@ object StatusbarAppIconHook {
                 View::class.java,
                 hook
             )
-            log("Hooked IconState.applyToView")
         } catch (t: Throwable) {
-            log("Failed to hook applyToView")
+            log("Failed to hook IconState.applyToView")
             log(t)
         }
     }
@@ -140,15 +133,13 @@ object StatusbarAppIconHook {
                             if (isNotification) {
                                 param.result = null
                             }
-                        } catch (t: Throwable) {
-                            log(t)
+                        } catch (_: Throwable) {
                         }
                     }
                 }
             )
-            log("Hooked StatusBarIconView.updateIconColor")
         } catch (t: Throwable) {
-            log("Failed to hook updateIconColor")
+            log("Failed to hook StatusBarIconView.updateIconColor")
             log(t)
         }
     }
@@ -196,19 +187,12 @@ object StatusbarAppIconHook {
 
                             if (appContext == null) appContext = sysuiContext
 
-                            setNotificationIcon(
-                                statusBarIcon,
-                                appContext,
-                                param
-                            )
-                        } catch (t: Throwable) {
-                            log(t)
+                            setNotificationIcon(statusBarIcon, appContext, param)
+                        } catch (_: Throwable) {
                         }
                     }
                 }
             )
-
-            log("Hooked StatusBarIconView.getIcon(statusBarIcon)")
         } catch (t: Throwable) {
             log("Failed to hook getIcon(statusBarIcon)")
             log(t)
@@ -217,17 +201,8 @@ object StatusbarAppIconHook {
 
     private fun removeTintForStatusbarIcon(icon: View, isNotification: Boolean) {
         try {
-            val statusBarIcon = try {
-                XposedHelpers.getObjectField(icon, "mIcon")
-            } catch (_: Throwable) {
-                null
-            } ?: return
-
-            val pkgName = try {
-                XposedHelpers.getObjectField(statusBarIcon, "pkg") as? String
-            } catch (_: Throwable) {
-                null
-            } ?: return
+            val statusBarIcon = XposedHelpers.getObjectField(icon, "mIcon")
+            val pkgName = XposedHelpers.getObjectField(statusBarIcon, "pkg") as? String ?: return
 
             if (isNotification && !pkgName.contains("systemui")) {
                 try {
@@ -254,8 +229,7 @@ object StatusbarAppIconHook {
                 } catch (_: Throwable) {
                 }
             }
-        } catch (t: Throwable) {
-            log(t)
+        } catch (_: Throwable) {
         }
     }
 
@@ -267,11 +241,8 @@ object StatusbarAppIconHook {
         try {
             if (statusBarIcon == null) return
 
-            val pkgName = try {
-                XposedHelpers.getObjectField(statusBarIcon, "pkg") as? String
-            } catch (_: Throwable) {
-                null
-            } ?: return
+            val pkgName =
+                XposedHelpers.getObjectField(statusBarIcon, "pkg") as? String ?: return
 
             if (pkgName.contains("com.android") || pkgName.contains("systemui")) {
                 return
@@ -284,8 +255,7 @@ object StatusbarAppIconHook {
             }
 
             param.result = icon
-        } catch (t: Throwable) {
-            log(t)
+        } catch (_: Throwable) {
         }
     }
 }
