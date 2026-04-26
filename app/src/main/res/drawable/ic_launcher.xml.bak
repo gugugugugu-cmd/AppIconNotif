@@ -10,13 +10,17 @@
 
     <path
         android:fillColor="#FFFFFF"
-        android:pathData="M26,34h56a6,6 0,0 1,6 6v2a6,6 0,0 1,-6 6H26a6,6 0,0 1,-6 -6v-2a6,6 0,0 1,6 -6z"/>
+        android:pathData="M24,34h14v14H24z"/>
 
     <path
         android:fillColor="#FFFFFF"
-        android:pathData="M26,54h12a6,6 0,0 1,6 6v2a6,6 0,0 1,-6 6H26a6,6 0,0 1,-6 -6v-2a6,6 0,0 1,6 -6z"/>
+        android:pathData="M47,34h14v14H47z"/>
 
     <path
         android:fillColor="#FFFFFF"
-        android:pathData="M50,54h32a6,6 0,0 1,6 6v2a6,6 0,0 1,-6 6H50a6,6 0,0 1,-6 -6v-2a6,6 0,0 1,6 -6z"/>
+        android:pathData="M70,34h14v14H70z"/>
+
+    <path
+        android:fillColor="#FFFFFF"
+        android:pathData="M24,58h60v8H24z"/>
 </vector>
