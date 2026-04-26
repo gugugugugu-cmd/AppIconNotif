@@ -33,12 +33,6 @@ android {
     kotlinOptions {
         jvmTarget = '17'
     }
-
-    packaging {
-        resources {
-            excludes += ['/META-INF/{AL2.0,LGPL2.1}']
-        }
-    }
 }
 
 dependencies {
@@ -46,6 +40,5 @@ dependencies {
     implementation 'androidx.appcompat:appcompat:1.6.1'
     implementation 'com.google.android.material:material:1.11.0'
 
-    // 在线依赖版。若拉取失败，请改成本地 jar 方式。
-    compileOnly 'de.robv.android.xposed:api:82'
+    compileOnly files('libs/XposedBridgeApi-82.jar')
 }
