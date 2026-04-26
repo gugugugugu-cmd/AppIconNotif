@@ -12,78 +12,75 @@ jobs:
       contents: read
 
     steps:
-      - name: Delete all artifacts
+      - name: Delete all artifacts and workflow runs
         uses: actions/github-script@v7
         with:
           script: |
             const owner = context.repo.owner;
             const repo = context.repo.repo;
 
-            let artifactPage = 1;
             let deletedArtifacts = 0;
-
-            while (true) {
-              const { data } = await github.rest.actions.listArtifactsForRepo({
-                owner,
-                repo,
-                per_page: 100,
-                page: artifactPage
-              });
-
-              const artifacts = data.artifacts || [];
-              if (artifacts.length === 0) break;
-
-              for (const artifact of artifacts) {
-                core.info(`Deleting artifact: ${artifact.name} (id: ${artifact.id})`);
-                await github.rest.actions.deleteArtifact({
-                  owner,
-                  repo,
-                  artifact_id: artifact.id
-                });
-                deletedArtifacts++;
-              }
-
-              artifactPage++;
-            }
-
-            core.info(`Deleted ${deletedArtifacts} artifacts.`);
-
-      - name: Delete all workflow runs
-        uses: actions/github-script@v7
-        with:
-          script: |
-            const owner = context.repo.owner;
-            const repo = context.repo.repo;
-
-            let runPage = 1;
             let deletedRuns = 0;
-            const currentRunId = context.runId;
 
-            while (true) {
-              const { data } = await github.rest.actions.listWorkflowRunsForRepo({
-                owner,
-                repo,
-                per_page: 100,
-                page: runPage
-              });
-
-              const runs = data.workflow_runs || [];
-              if (runs.length === 0) break;
-
-              for (const run of runs) {
-                if (run.id === currentRunId) {
-                  core.info(`Skipping current run: ${run.id}`);
-                  continue;
- core ${})`);
-                await github.rest.actions.deleteWorkflowRun({
+            // 删除所有 artifacts
+            {
+              let page = 1;
+              while (true) {
+                const { data } = await github.rest.actions.listArtifactsForRepo({
                   owner,
                   repo,
-                  run_id: run.id
+                  per_page: 100,
+                  page
                 });
-                deletedRuns++;
-              }
 
-              runPage++;
+                const artifacts = data.artifacts || [];
+                if (artifacts.length === 0) break;
+
+                for (const artifact of artifacts) {
+                  core.info(`Deleting artifact: ${artifact.name} (id: ${artifact.id})`);
+                  await github.rest.actions.deleteArtifact({
+                    owner,
+                    repo,
+                    artifact_id: artifact.id
+                  });
+                  deletedArtifacts++;
+                }
+
+                page++;
+              }
             }
 
-            core.info(`Deleted ${deletedRuns} workflow runs.`);
+            // 删除所有 workflow runs
+            {
+              let page = 1;
+              while (true) {
+                const { data } = await github.rest.actions.listWorkflowRunsForRepo({
+                  owner,
+                  repo,
+                  per_page: 100,
+                  page
+                });
+
+                const runs = data.workflow_runs || [];
+                if (runs.length === 0) break;
+
+                for (const run of runs) {
+                  // 跳过当前正在执行的这个 cleanup run，避免自删失败
+                  if (run.id === context.runId) {
+                    core.info(`Skipping current run: ${run.name} (id: ${run.id})`);
+                    continue;
+                  }
+
+                  core.info(`Deleting workflow run: ${run.name} (id: ${run.idWorkflow({
+                    owner,
+                    repo,
+                    run_id: run.id
+                  });
+                  deletedRuns++;
+                }
+
+                page++;
+              }
+            }
+
+            core.info(`Done. Deleted ${deletedArtifacts} artifacts and ${deletedRuns} workflow runs.`);
