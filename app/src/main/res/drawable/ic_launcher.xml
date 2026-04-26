@@ -1,29 +1,34 @@
+<?xml version="1.0" encoding="utf-8"?>
 <vector xmlns:android="http://schemas.android.com/apk/res/android"
     android:width="108dp"
     android:height="108dp"
     android:viewportWidth="108"
     android:viewportHeight="108">
 
+    <!-- 背景 -->
     <path
         android:fillColor="#EAF2FF"
         android:pathData="M18,18 H90 A12,12 0 0,1 102,30 V78 A12,12 0 0,1 90,90 H18 A12,12 0 0,1 6,78 V30 A12,12 0 0,1 18,18 Z" />
 
+    <!-- 主铃铛轮廓：整体上移并居中 -->
     <path
         android:fillColor="#00000000"
         android:strokeColor="#1557B0"
         android:strokeWidth="4"
         android:strokeLineCap="round"
         android:strokeLineJoin="round"
-        android:pathData="M36,72 L72,72 C75,72 76.5,68.5 74,66.5 L68,61 C65.5,58.8 64,55.7 64,52.3 L64,46 C64,34.4 54.6,25 43,25 C31.4,25 22,34.4 22,46 L22,60 C22,63.4 20.5,66.5 18,68.5 L12,73 C9.5,75 11,79 14,79 L72,79" />
+        android:pathData="M34,70 H74 C77,70 78.5,66.8 76,64.8 L69.5,59.5 C67.2,57.6 66,54.8 66,51.8 V44.5 C66,33.7 57.3,25 46.5,25 C35.7,25 27,33.7 27,44.5 V59.5 C27,62.8 25.5,65.8 23,67.8 L17.5,72 C15,74 16.5,78 20,78 H74" />
 
+    <!-- 底部铃舌 -->
     <path
         android:fillColor="#00000000"
         android:strokeColor="#1557B0"
         android:strokeWidth="4"
         android:strokeLineCap="round"
-        android:pathData="M38,79 C39.5,84 44,87 49,87 C54,87 58.5,84 60,79" />
+        android:pathData="M39,78 C40.8,83 45.3,86 50.5,86 C55.7,86 60.2,83 62,78" />
 
+    <!-- 顶部小点 -->
     <path
         android:fillColor="#1557B0"
-        android:pathData="M43,22 m-1.5,0 a1.5,1.5 0 1,0 3,0 a1.5,1.5 0 1,0 -3,0" />
+        android:pathData="M46.5,21.5 m-1.8,0 a1.8,1.8 0 1,0 3.6,0 a1.8,1.8 0 1,0 -3.6,0" />
 </vector>
