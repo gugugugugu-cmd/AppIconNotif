@@ -4,10 +4,10 @@ import android.app.ActivityManager
 import android.content.Context
 import android.graphics.Color
 import android.graphics.drawable.Drawable
-import android.graphics.drawable.Icon
 import android.os.Build
 import android.util.TypedValue
 import android.view.View
+import android.widget.ImageView
 import de.robv.android.xposed.XC_MethodHook
 import de.robv.android.xposed.XposedBridge
 import de.robv.android.xposed.XposedHelpers
@@ -68,7 +68,7 @@ object StatusbarAppIconHook {
             hookIconState(iconStateClass)
             hookUpdateIconColor(statusBarIconViewClass)
             hookUpdateTintForIcon(notificationIconAreaControllerClass)
-            hookGetIcon(statusBarIconViewClass, scalingDrawableWrapperClass)
+            hookGetIcon(statusBarIconViewClass, scalingDrawableWrapperClass, lpparam)
 
             log("StatusbarAppIconHook initialized")
         } catch (t: Throwable) {
@@ -85,6 +85,7 @@ object StatusbarAppIconHook {
                 object : XC_MethodHook() {
                     override fun afterHookedMethod(param: MethodHookParam) {
                         try {
+                            @Suppress("UNCHECKED_CAST")
                             val iconStates =
                                 XposedHelpers.getObjectField(param.thisObject, "mIconStates")
                                         as? HashMap<View, Any> ?: return
@@ -110,7 +111,11 @@ object StatusbarAppIconHook {
             override fun afterHookedMethod(param: MethodHookParam) {
                 try {
                     val icon = param.args[0] as? View ?: return
-                    val isNotification = XposedHelpers.getObjectField(icon, "mNotification") != null
+                    val isNotification = try {
+                        XposedHelpers.getObjectField(icon, "mNotification") != null
+                    } catch (_: Throwable) {
+                        false
+                    }
                     removeTintForStatusbarIcon(icon, isNotification)
                 } catch (t: Throwable) {
                     log(t)
@@ -153,8 +158,12 @@ object StatusbarAppIconHook {
                 object : XC_MethodHook() {
                     override fun beforeHookedMethod(param: MethodHookParam) {
                         try {
-                            val isNotification =
+                            val isNotification = try {
                                 XposedHelpers.getObjectField(param.thisObject, "mNotification") != null
+                            } catch (_: Throwable) {
+                                false
+                            }
+
                             if (isNotification) {
                                 param.result = null
                             }
@@ -172,7 +181,10 @@ object StatusbarAppIconHook {
     }
 
     private fun hookUpdateTintForIcon(controllerClass: Class<*>?) {
-        if (controllerClass == null) return
+        if (controllerClass == null) {
+            log("NotificationIconAreaController class not found, skip updateTintForIcon hook")
+            return
+        }
 
         try {
             XposedHelpers.findAndHookMethod(
@@ -209,21 +221,34 @@ object StatusbarAppIconHook {
 
     private fun hookGetIcon(
         statusBarIconViewClass: Class<*>,
-        scalingDrawableWrapperClass: Class<*>
+        scalingDrawableWrapperClass: Class<*>,
+        lpparam: XC_LoadPackage.LoadPackageParam
     ) {
+        val statusBarIconClass = try {
+            XposedHelpers.findClass(
+                "com.android.internal.statusbar.StatusBarIcon",
+                lpparam.classLoader
+            )
+        } catch (t: Throwable) {
+            log("Failed to find StatusBarIcon class")
+            log(t)
+            return
+        }
+
         try {
             XposedHelpers.findAndHookMethod(
                 statusBarIconViewClass,
                 "getIcon",
                 Context::class.java,
                 Context::class.java,
-                XposedHelpers.findClass("com.android.internal.statusbar.StatusBarIcon", null),
+                statusBarIconClass,
                 object : XC_MethodHook() {
                     override fun beforeHookedMethod(param: MethodHookParam) {
                         try {
                             val sysuiContext = param.args[0] as Context
                             val appContext = param.args[1] as Context
                             val statusBarIcon = param.args[2]
+
                             setNotificationIcon(
                                 statusBarIcon,
                                 appContext,
@@ -247,14 +272,19 @@ object StatusbarAppIconHook {
             XposedHelpers.findAndHookMethod(
                 statusBarIconViewClass,
                 "getIcon",
-                XposedHelpers.findClass("com.android.internal.statusbar.StatusBarIcon", null),
+                statusBarIconClass,
                 object : XC_MethodHook() {
                     override fun beforeHookedMethod(param: MethodHookParam) {
                         try {
                             val thisObj = param.thisObject
                             val statusBarIcon = param.args[0]
 
-                            val sysuiContext = XposedHelpers.getObjectField(thisObj, "mContext") as Context
+                            val sysuiContext = try {
+                                XposedHelpers.getObjectField(thisObj, "mContext") as Context
+                            } catch (_: Throwable) {
+                                return
+                            }
+
                             val sbn = try {
                                 XposedHelpers.getObjectField(thisObj, "mNotification")
                             } catch (_: Throwable) {
@@ -294,8 +324,17 @@ object StatusbarAppIconHook {
 
     private fun removeTintForStatusbarIcon(icon: View, isNotification: Boolean) {
         try {
-            val statusBarIcon = XposedHelpers.getObjectField(icon, "mIcon")
-            val pkgName = XposedHelpers.getObjectField(statusBarIcon, "pkg") as? String ?: return
+            val statusBarIcon = try {
+                XposedHelpers.getObjectField(icon, "mIcon")
+            } catch (_: Throwable) {
+                null
+            } ?: return
+
+            val pkgName = try {
+                XposedHelpers.getObjectField(statusBarIcon, "pkg") as? String
+            } catch (_: Throwable) {
+                null
+            } ?: return
 
             if (isNotification && !pkgName.contains("systemui")) {
                 try {
@@ -313,12 +352,12 @@ object StatusbarAppIconHook {
                 }
 
                 try {
-                    (icon as? android.widget.ImageView)?.imageTintList = null
+                    (icon as? ImageView)?.imageTintList = null
                 } catch (_: Throwable) {
                 }
 
                 try {
-                    (icon as? android.widget.ImageView)?.clearColorFilter()
+                    (icon as? ImageView)?.clearColorFilter()
                 } catch (_: Throwable) {
                 }
             }
@@ -337,8 +376,15 @@ object StatusbarAppIconHook {
         try {
             if (statusBarIcon == null) return
 
-            val pkgName = XposedHelpers.getObjectField(statusBarIcon, "pkg") as? String ?: return
-            if (pkgName.contains("com.android") || pkgName.contains("systemui")) return
+            val pkgName = try {
+                XposedHelpers.getObjectField(statusBarIcon, "pkg") as? String
+            } catch (_: Throwable) {
+                null
+            } ?: return
+
+            if (pkgName.contains("com.android") || pkgName.contains("systemui")) {
+                return
+            }
 
             var icon: Drawable = try {
                 context.packageManager.getApplicationIcon(pkgName)
@@ -349,50 +395,56 @@ object StatusbarAppIconHook {
             val res = sysuiContext.resources
 
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
-                val isLowRamDevice = ActivityManager.isLowRamDeviceStatic()
+                val isLowRamDevice = try {
+                    XposedHelpers.callStaticMethod(
+                        ActivityManager::class.java,
+                        "isLowRamDeviceStatic"
+                    ) as Boolean
+                } catch (_: Throwable) {
+                    false
+                }
 
-                val maxIconSize = res.getDimensionPixelSize(
-                    res.getIdentifier(
-                        if (isLowRamDevice) {
-                            "notification_small_icon_size_low_ram"
-                        } else {
-                            "notification_small_icon_size"
-                        },
-                        "dimen",
-                        FRAMEWORK
-                    )
-                )
+                val sizeResName = if (isLowRamDevice) {
+                    "notification_small_icon_size_low_ram"
+                } else {
+                    "notification_small_icon_size"
+                }
 
-                icon = downscaleDrawable(icon, maxIconSize, maxIconSize)
+                val sizeResId = res.getIdentifier(sizeResName, "dimen", FRAMEWORK)
+                if (sizeResId != 0) {
+                    val maxIconSize = res.getDimensionPixelSize(sizeResId)
+                    icon.setBounds(0, 0, maxIconSize, maxIconSize)
+                }
             }
 
             val typedValue = TypedValue()
-            res.getValue(
-                res.getIdentifier(
-                    "status_bar_icon_scale_factor",
-                    "dimen",
-                    SYSTEMUI
-                ),
-                typedValue,
-                true
+            val scaleResId = res.getIdentifier(
+                "status_bar_icon_scale_factor",
+                "dimen",
+                SYSTEMUI
             )
-            val scaleFactor = typedValue.float
+
+            val scaleFactor = if (scaleResId != 0) {
+                res.getValue(scaleResId, typedValue, true)
+                typedValue.float
+            } else {
+                1f
+            }
 
             param.result = if (scaleFactor == 1f) {
                 icon
             } else {
-                scalingDrawableWrapperClass.getConstructor(
-                    Drawable::class.java,
-                    Float::class.javaPrimitiveType
-                ).newInstance(icon, scaleFactor)
+                try {
+                    scalingDrawableWrapperClass.getConstructor(
+                        Drawable::class.java,
+                        Float::class.javaPrimitiveType
+                    ).newInstance(icon, scaleFactor)
+                } catch (_: Throwable) {
+                    icon
+                }
             }
         } catch (t: Throwable) {
             log(t)
         }
-    }
-
-    private fun downscaleDrawable(drawable: Drawable, width: Int, height: Int): Drawable {
-        drawable.setBounds(0, 0, width, height)
-        return drawable
     }
 }
