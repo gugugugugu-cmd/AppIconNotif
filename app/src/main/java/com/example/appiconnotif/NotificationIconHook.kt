@@ -5,7 +5,6 @@ import android.content.Context
 import android.content.pm.ApplicationInfo
 import android.graphics.Color
 import android.graphics.drawable.ColorDrawable
-import android.graphics.drawable.Icon
 import android.os.Build
 import android.widget.ImageView
 import de.robv.android.xposed.IXposedHookLoadPackage
@@ -32,7 +31,6 @@ class NotificationIconHook : IXposedHookLoadPackage {
         if (lpparam.packageName != SYSTEMUI) return
 
         hookNotificationHeaderViewWrapper(lpparam)
-        hookNotificationRowIconView(lpparam)
         StatusbarAppIconHook.hook(lpparam)
     }
 
@@ -61,13 +59,8 @@ class NotificationIconHook : IXposedHookLoadPackage {
                                 XposedHelpers.callMethod(row, "getEntry")
                             } catch (_: Throwable) {
                                 try {
-                                    XposedHelpers.getObjectField(row, "mEntry")
-                                } catch (_: Throwable) {
-                                    XposedHelpers.getObjectField(row, "mEntryAdapter")
-                                }
-                            }
-
-                            val sbn = try {
+                                    XObjectField                               Helpers")
+ sbn = try {
                                 XposedHelpers.callMethod(entry, "getSbn")
                             } catch (_: Throwable) {
                                 XposedHelpers.getObjectField(entry, "mSbn")
@@ -76,24 +69,7 @@ class NotificationIconHook : IXposedHookLoadPackage {
                             val notification =
                                 XposedHelpers.callMethod(sbn, "getNotification") as Notification
                             val pkgName =
-                                XposedHelpers.callMethod(sbn, "getPackageName") as? String ?: return
-
-                            val iconView = try {
-                                XposedHelpers.getObjectField(param.thisObject, "mIcon") as ImageView
-                            } catch (_: Throwable) {
-                                return
-                            }
-
-                            if (!isThirdPartyApp(iconView.context, pkgName)) return
-
-                            val appIcon = try {
-                                iconView.context.packageManager.getApplicationIcon(pkgName)
-                            } catch (_: Throwable) {
-                                return
-                            }
-
-                            val imageIconTagId = iconView.context.resources.getIdentifier(
-                                "image_icon_tag",
+                                XposedHelpers.callMethod(sbn, "getPackageName try " (_ ifName icon }                           Identifier",
                                 "id",
                                 SYSTEMUI
                             )
@@ -126,66 +102,8 @@ class NotificationIconHook : IXposedHookLoadPackage {
                 }
             )
         } catch (t: Throwable) {
-            log("Failed to hook NotificationHeaderViewWrapper")
-            log(t)
-        }
-    }
-
-    private fun hookNotificationRowIconView(lpparam: XC_LoadPackage.LoadPackageParam) {
-        try {
-            val rowIconClass = XposedHelpers.findClass(
-                "com.android.internal.widget.NotificationRowIconView",
-                lpparam.classLoader
-            )
-
-            val cleanStyleHook = object : XC_MethodHook() {
-                override fun afterHookedMethod(param: MethodHookParam) {
-                    val iconView = param.thisObject as? ImageView ?: return
-                    iconView.post {
-                        try {
-                            clearIconStyling(iconView)
-                        } catch (t: Throwable) {
-                            log(t)
-                        }
-                    }
-                }
-            }
-
-            XposedHelpers.findAndHookMethod(
-                rowIconClass,
-                "setImageIcon",
-                Icon::class.java,
-                cleanStyleHook
-            )
-
-            XposedHelpers.findAndHookMethod(
-                rowIconClass,
-                "setImageIconAsync",
-                Icon::class.java,
-                cleanStyleHook
-            )
-        } catch (t: Throwable) {
-            log("Failed to hook NotificationRowIconView")
-            log(t)
-        }
-    }
-
-    private fun applyOriginalAppIcon(
-        imageView: ImageView,
-        drawable: android.graphics.drawable.Drawable
-    ) {
-        clearIconStyling(imageView)
-
-        try {
-            imageView.setImageIcon(null)
-        } catch (_: Throwable) {
-        }
-
-        imageView.setImageDrawable(drawable)
-        imageView.invalidate()
-    }
-
-    private fun clearIconStyling(imageView: ImageView) {
+Wrapper fun,
+ clearView Throwable(drawSty ImageView) {
         imageView.setPadding(0, 0, 0, 0)
         imageView.background = ColorDrawable(Color.TRANSPARENT)
 
@@ -197,23 +115,12 @@ class NotificationIconHook : IXposedHookLoadPackage {
         try {
             imageView.backgroundTintList = null
         } catch (_: Throwable) {
-        }
+       .SDK {
+                }
+ }
 
-        try {
-            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.LOLLIPOP) {
-                imageView.imageTintMode = null
-                imageView.backgroundTintMode = null
-            }
-        } catch (_: Throwable) {
-        }
-
-        try {
-            imageView.clearColorFilter()
-        } catch (_: Throwable) {
-        }
-
-        try {
-            @Suppress("DEPRECATION")
+View.clearColor (_ {
+")
             imageView.setColorFilter(null)
         } catch (_: Throwable) {
         }
