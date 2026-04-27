@@ -1,6 +1,7 @@
 package com.example.appiconnotif
 
 import android.content.Context
+import android.content.pm.ApplicationInfo
 import android.graphics.drawable.Drawable
 import android.view.View
 import android.widget.ImageView
@@ -204,7 +205,13 @@ object StatusbarAppIconHook {
             val statusBarIcon = XposedHelpers.getObjectField(icon, "mIcon")
             val pkgName = XposedHelpers.getObjectField(statusBarIcon, "pkg") as? String ?: return
 
-            if (isNotification && !pkgName.contains("systemui")) {
+            val context = try {
+                (icon as? ImageView)?.context
+            } catch (_: Throwable) {
+                null
+            } ?: return
+
+            if (isNotification && isThirdPartyApp(context, pkgName)) {
                 try {
                     XposedHelpers.setIntField(icon, "mCurrentSetColor", 0)
                 } catch (_: Throwable) {
@@ -244,7 +251,7 @@ object StatusbarAppIconHook {
             val pkgName =
                 XposedHelpers.getObjectField(statusBarIcon, "pkg") as? String ?: return
 
-            if (pkgName.contains("com.android") || pkgName.contains("systemui")) {
+            if (!isThirdPartyApp(context, pkgName)) {
                 return
             }
 
@@ -256,6 +263,18 @@ object StatusbarAppIconHook {
 
             param.result = icon
         } catch (_: Throwable) {
+        }
+    }
+
+    private fun isThirdPartyApp(context: Context, pkgName: String): Boolean {
+        return try {
+            val appInfo = context.packageManager.getApplicationInfo(pkgName, 0)
+            val isSystemApp = (appInfo.flags and ApplicationInfo.FLAG_SYSTEM) != 0
+            val isUpdatedSystemApp =
+                (appInfo.flags and ApplicationInfo.FLAG_UPDATED_SYSTEM_APP) != 0
+            !isSystemApp && !isUpdatedSystemApp
+        } catch (_: Throwable) {
+            false
         }
     }
 }

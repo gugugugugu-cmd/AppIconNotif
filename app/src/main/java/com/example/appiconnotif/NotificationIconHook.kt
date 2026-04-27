@@ -1,6 +1,8 @@
 package com.example.appiconnotif
 
 import android.app.Notification
+import android.content.Context
+import android.content.pm.ApplicationInfo
 import android.graphics.Color
 import android.graphics.drawable.ColorDrawable
 import android.graphics.drawable.Icon
@@ -81,6 +83,8 @@ class NotificationIconHook : IXposedHookLoadPackage {
                             } catch (_: Throwable) {
                                 return
                             }
+
+                            if (!isThirdPartyApp(iconView.context, pkgName)) return
 
                             val appIcon = try {
                                 iconView.context.packageManager.getApplicationIcon(pkgName)
@@ -222,6 +226,18 @@ class NotificationIconHook : IXposedHookLoadPackage {
         try {
             XposedHelpers.callMethod(imageView, "setApplyCircularCrop", false)
         } catch (_: Throwable) {
+        }
+    }
+
+    private fun isThirdPartyApp(context: Context, pkgName: String): Boolean {
+        return try {
+            val appInfo = context.packageManager.getApplicationInfo(pkgName, 0)
+            val isSystemApp = (appInfo.flags and ApplicationInfo.FLAG_SYSTEM) != 0
+            val isUpdatedSystemApp =
+                (appInfo.flags and ApplicationInfo.FLAG_UPDATED_SYSTEM_APP) != 0
+            !isSystemApp && !isUpdatedSystemApp
+        } catch (_: Throwable) {
+            false
         }
     }
 }
