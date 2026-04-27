@@ -132,17 +132,16 @@ object StatusbarAppIconHook {
                             } catch (_: Throwable) {
                                 false
                             }
-
                             if (!isNotification) return
 
-                            val icon = try {
+                            val statusBarIcon = try {
                                 XposedHelpers.getObjectField(thisObj, "mIcon")
                             } catch (_: Throwable) {
                                 null
                             } ?: return
 
                             val pkgName = try {
-                                XposedHelpers.getObjectField(icon, "pkg") as? String
+                                XposedHelpers.getObjectField(statusBarIcon, "pkg") as? String
                             } catch (_: Throwable) {
                                 null
                             } ?: return
@@ -216,16 +215,18 @@ object StatusbarAppIconHook {
                     }
                 }
             )
-        } catch (t:Bar private) {
+        } catch (t: Throwable) {
+            log("Failed to hook getIcon(statusBarIcon)")
+            log(t)
+        }
+    }
+
+    private fun removeTintForStatusbarIcon(icon: View, isNotification: Boolean) {
         try {
             val statusBarIcon = XposedHelpers.getObjectField(icon, "mIcon")
             val pkgName = XposedHelpers.getObjectField(statusBarIcon, "pkg") as? String ?: return
 
-            val context = try {
-                (icon as? ImageView)?.context
-            } catch (_: Throwable) {
-                null
-            } ?: return
+            val context = (icon as? ImageView)?.context ?: return
 
             if (isNotification && isThirdPartyApp(context, pkgName)) {
                 try {
