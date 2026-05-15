@@ -1,6 +1,7 @@
 package com.example.appiconnotif
 
 import android.content.Context
+import android.content.pm.ApplicationInfo
 import android.graphics.drawable.Drawable
 import android.view.View
 import android.widget.ImageView
@@ -62,7 +63,7 @@ object StatusbarAppIconHook {
                                         as? HashMap<View, Any> ?: return
 
                             for (icon in iconStates.keys) {
-                                removeTintForStatusbarIcon(icon)
+                                removeTintForStatusbarIcon(icon, false)
                             }
                         } catch (_: Throwable) {
                         }
@@ -80,7 +81,12 @@ object StatusbarAppIconHook {
             override fun afterHookedMethod(param: MethodHookParam) {
                 try {
                     val icon = param.args[0] as? View ?: return
-                    removeTintForStatusbarIcon(icon)
+                    val isNotification = try {
+                        XposedHelpers.getObjectField(icon, "mNotification") != null
+                    } catch (_: Throwable) {
+                        false
+                    }
+                    removeTintForStatusbarIcon(icon, isNotification)
                 } catch (_: Throwable) {
                 }
             }
@@ -140,7 +146,13 @@ object StatusbarAppIconHook {
                                 null
                             } ?: return
 
-                            if (PerAppConfig.isReplacementEnabled(pkgName)) {
+                            val context = try {
+                                XposedHelpers.getObjectField(thisObj, "mContext") as Context
+                            } catch (_: Throwable) {
+                                null
+                            } ?: return
+
+                            if (isThirdPartyApp(context, pkgName)) {
                                 param.result = null
                             }
                         } catch (_: Throwable) {
@@ -209,14 +221,14 @@ object StatusbarAppIconHook {
         }
     }
 
-    private fun removeTintForStatusbarIcon(icon: View) {
+    private fun removeTintForStatusbarIcon(icon: View, isNotification: Boolean) {
         try {
             val statusBarIcon = XposedHelpers.getObjectField(icon, "mIcon")
             val pkgName = XposedHelpers.getObjectField(statusBarIcon, "pkg") as? String ?: return
 
             val context = (icon as? ImageView)?.context ?: return
 
-            if (PerAppConfig.isReplacementEnabled(pkgName)) {
+            if (isNotification && isThirdPartyApp(context, pkgName)) {
                 try {
                     XposedHelpers.setIntField(icon, "mCurrentSetColor", 0)
                 } catch (_: Throwable) {
@@ -256,7 +268,9 @@ object StatusbarAppIconHook {
             val pkgName =
                 XposedHelpers.getObjectField(statusBarIcon, "pkg") as? String ?: return
 
-            if (!PerAppConfig.isReplacementEnabled(pkgName)) return
+            if (!isThirdPartyApp(context, pkgName)) {
+                return
+            }
 
             val icon: Drawable = try {
                 context.packageManager.getApplicationIcon(pkgName)
@@ -266,6 +280,18 @@ object StatusbarAppIconHook {
 
             param.result = icon
         } catch (_: Throwable) {
+        }
+    }
+
+    private fun isThirdPartyApp(context: Context, pkgName: String): Boolean {
+        return try {
+            val appInfo = context.packageManager.getApplicationInfo(pkgName, 0)
+            val isSystemApp = (appInfo.flags and ApplicationInfo.FLAG_SYSTEM) != 0
+            val isUpdatedSystemApp =
+                (appInfo.flags and ApplicationInfo.FLAG_UPDATED_SYSTEM_APP) != 0
+            !isSystemApp && !isUpdatedSystemApp
+        } catch (_: Throwable) {
+            false
         }
     }
 }

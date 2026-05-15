@@ -2,6 +2,7 @@ package com.example.appiconnotif
 
 import android.app.Notification
 import android.content.Context
+import android.content.pm.ApplicationInfo
 import android.graphics.Color
 import android.graphics.drawable.ColorDrawable
 import android.os.Build
@@ -28,9 +29,6 @@ class NotificationIconHook : IXposedHookLoadPackage {
 
     override fun handleLoadPackage(lpparam: XC_LoadPackage.LoadPackageParam) {
         if (lpparam.packageName != SYSTEMUI) return
-
-        // 初始化配置（只读模式）
-        PerAppConfig.initForRead()
 
         hookNotificationHeaderViewWrapper(lpparam)
         StatusbarAppIconHook.hook(lpparam)
@@ -84,8 +82,7 @@ class NotificationIconHook : IXposedHookLoadPackage {
                                 return
                             }
 
-                            // 检查开关
-                            if (!PerAppConfig.isReplacementEnabled(pkgName)) return
+                            if (!isThirdPartyApp(iconView.context, pkgName)) return
 
                             val appIcon = try {
                                 iconView.context.packageManager.getApplicationIcon(pkgName)
@@ -188,6 +185,18 @@ class NotificationIconHook : IXposedHookLoadPackage {
         try {
             XposedHelpers.callMethod(imageView, "setApplyCircularCrop", false)
         } catch (_: Throwable) {
+        }
+    }
+
+    private fun isThirdPartyApp(context: Context, pkgName: String): Boolean {
+        return try {
+            val appInfo = context.packageManager.getApplicationInfo(pkgName, 0)
+            val isSystemApp = (appInfo.flags and ApplicationInfo.FLAG_SYSTEM) != 0
+            val isUpdatedSystemApp =
+                (appInfo.flags and ApplicationInfo.FLAG_UPDATED_SYSTEM_APP) != 0
+            !isSystemApp && !isUpdatedSystemApp
+        } catch (_: Throwable) {
+            false
         }
     }
 }
