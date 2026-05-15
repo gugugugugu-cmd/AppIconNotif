@@ -2,6 +2,11 @@ package com.example.appiconnotif
 
 import android.content.Context
 import android.content.pm.ApplicationInfo
+import android.graphics.Bitmap
+import android.graphics.Canvas
+import android.graphics.ColorMatrix
+import android.graphics.ColorMatrixColorFilter
+import android.graphics.drawable.BitmapDrawable
 import android.graphics.drawable.Drawable
 import android.view.View
 import android.widget.ImageView
@@ -20,6 +25,47 @@ object StatusbarAppIconHook {
 
     private fun log(t: Throwable) {
         XposedBridge.log(t)
+    }
+
+    // 将 Drawable 转换为 Bitmap
+    private fun drawableToBitmap(drawable: Drawable): Bitmap {
+        if (drawable is BitmapDrawable && drawable.bitmap != null) {
+            return drawable.bitmap
+        }
+        val bitmap = Bitmap.createBitmap(
+            drawable.intrinsicWidth.coerceAtLeast(1),
+            drawable.intrinsicHeight.coerceAtLeast(1),
+            Bitmap.Config.ARGB_8888
+        )
+        val canvas = Canvas(bitmap)
+        drawable.setBounds(0, 0, canvas.width, canvas.height)
+        drawable.draw(canvas)
+        return bitmap
+    }
+
+    // 将彩色 Bitmap 转换为单色（灰度）Bitmap
+    private fun toMonochromeBitmap(bitmap: Bitmap): Bitmap {
+        val result = Bitmap.createBitmap(bitmap.width, bitmap.height, bitmap.config)
+        val canvas = Canvas(result)
+        val paint = android.graphics.Paint()
+        val cm = ColorMatrix()
+        cm.setSaturation(0f)
+        val filter = ColorMatrixColorFilter(cm)
+        paint.colorFilter = filter
+        canvas.drawBitmap(bitmap, 0f, 0f, paint)
+        return result
+    }
+
+    // 将 Drawable 转换为单色 Drawable
+    private fun toMonochromeDrawable(drawable: Drawable): Drawable {
+        val bitmap = drawableToBitmap(drawable)
+        val monoBitmap = toMonochromeBitmap(bitmap)
+        return BitmapDrawable(drawable.resources, monoBitmap)
+    }
+
+    // 判断是否需要转换为单色（可在此接入配置，默认 true）
+    private fun shouldConvertToMonochrome(): Boolean {
+        return true
     }
 
     fun hook(lpparam: XC_LoadPackage.LoadPackageParam) {
@@ -278,7 +324,14 @@ object StatusbarAppIconHook {
                 return
             }
 
-            param.result = icon
+            // 根据配置决定是否转换为单色
+            val finalIcon = if (shouldConvertToMonochrome()) {
+                toMonochromeDrawable(icon)
+            } else {
+                icon
+            }
+
+            param.result = finalIcon
         } catch (_: Throwable) {
         }
     }
