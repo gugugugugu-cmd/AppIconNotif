@@ -17,7 +17,7 @@ class SettingsActivity : Activity() {
     private lateinit var listView: ListView
     private lateinit var searchEditText: EditText
     private lateinit var hideSystemCheckBox: CheckBox
-    private lateinit var adapter: AppListAdapter
+    private var adapter: AppListAdapter? = null   // 改为可空类型
 
     private val allApps = mutableListOf<AppInfo>()
     private var displayApps = mutableListOf<AppInfo>()
@@ -85,7 +85,7 @@ class SettingsActivity : Activity() {
             adapter = AppListAdapter(this, displayApps)
             listView.adapter = adapter
         } else {
-            adapter.updateList(displayApps)
+            adapter?.updateList(displayApps)
         }
     }
 
@@ -119,12 +119,10 @@ class SettingsActivity : Activity() {
 
             val app = getItem(pos)
 
-            // 应用图标
             val iconView = ImageView(context).apply {
                 setImageDrawable(app.icon)
                 layoutParams = LinearLayout.LayoutParams(100, 100)
             }
-            // 文字区域
             val textLayout = LinearLayout(context).apply {
                 orientation = LinearLayout.VERTICAL
                 layoutParams = LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f)
@@ -141,7 +139,6 @@ class SettingsActivity : Activity() {
             textLayout.addView(nameView)
             textLayout.addView(pkgView)
 
-            // 开关
             val switch = Switch(context).apply {
                 isChecked = PerAppConfig.isReplacementEnabled(app.packageName)
                 setOnCheckedChangeListener { _, isChecked ->
