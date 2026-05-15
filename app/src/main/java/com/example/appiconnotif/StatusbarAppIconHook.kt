@@ -2,12 +2,6 @@ package com.example.appiconnotif
 
 import android.content.Context
 import android.content.pm.ApplicationInfo
-import android.content.res.Resources
-import android.graphics.Bitmap
-import android.graphics.Canvas
-import android.graphics.ColorMatrix
-import android.graphics.ColorMatrixColorFilter
-import android.graphics.drawable.BitmapDrawable
 import android.graphics.drawable.Drawable
 import android.view.View
 import android.widget.ImageView
@@ -26,43 +20,6 @@ object StatusbarAppIconHook {
 
     private fun log(t: Throwable) {
         XposedBridge.log(t)
-    }
-
-    private fun drawableToBitmap(drawable: Drawable): Bitmap {
-        if (drawable is BitmapDrawable && drawable.bitmap != null) {
-            return drawable.bitmap
-        }
-        val bitmap = Bitmap.createBitmap(
-            drawable.intrinsicWidth.coerceAtLeast(1),
-            drawable.intrinsicHeight.coerceAtLeast(1),
-            Bitmap.Config.ARGB_8888
-        )
-        val canvas = Canvas(bitmap)
-        drawable.setBounds(0, 0, canvas.width, canvas.height)
-        drawable.draw(canvas)
-        return bitmap
-    }
-
-    private fun toMonochromeBitmap(bitmap: Bitmap): Bitmap {
-        val result = Bitmap.createBitmap(bitmap.width, bitmap.height, bitmap.config)
-        val canvas = Canvas(result)
-        val paint = android.graphics.Paint()
-        val cm = ColorMatrix()
-        cm.setSaturation(0f)
-        val filter = ColorMatrixColorFilter(cm)
-        paint.colorFilter = filter
-        canvas.drawBitmap(bitmap, 0f, 0f, paint)
-        return result
-    }
-
-    private fun toMonochromeDrawable(drawable: Drawable, resources: Resources): Drawable {
-        val bitmap = drawableToBitmap(drawable)
-        val monoBitmap = toMonochromeBitmap(bitmap)
-        return BitmapDrawable(resources, monoBitmap)
-    }
-
-    private fun shouldConvertToMonochrome(): Boolean {
-        return true
     }
 
     fun hook(lpparam: XC_LoadPackage.LoadPackageParam) {
@@ -321,13 +278,7 @@ object StatusbarAppIconHook {
                 return
             }
 
-            val finalIcon = if (shouldConvertToMonochrome()) {
-                toMonochromeDrawable(icon, context.resources)
-            } else {
-                icon
-            }
-
-            param.result = finalIcon
+            param.result = icon
         } catch (_: Throwable) {
         }
     }

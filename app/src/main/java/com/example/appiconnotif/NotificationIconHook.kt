@@ -3,15 +3,8 @@ package com.example.appiconnotif
 import android.app.Notification
 import android.content.Context
 import android.content.pm.ApplicationInfo
-import android.content.res.Resources
-import android.graphics.Bitmap
-import android.graphics.Canvas
 import android.graphics.Color
-import android.graphics.ColorMatrix
-import android.graphics.ColorMatrixColorFilter
-import android.graphics.drawable.BitmapDrawable
 import android.graphics.drawable.ColorDrawable
-import android.graphics.drawable.Drawable
 import android.os.Build
 import android.widget.ImageView
 import de.robv.android.xposed.IXposedHookLoadPackage
@@ -31,44 +24,6 @@ class NotificationIconHook : IXposedHookLoadPackage {
 
         private fun log(t: Throwable) {
             XposedBridge.log(t)
-        }
-
-        private fun drawableToBitmap(drawable: Drawable): Bitmap {
-            if (drawable is BitmapDrawable && drawable.bitmap != null) {
-                return drawable.bitmap
-            }
-            val bitmap = Bitmap.createBitmap(
-                drawable.intrinsicWidth.coerceAtLeast(1),
-                drawable.intrinsicHeight.coerceAtLeast(1),
-                Bitmap.Config.ARGB_8888
-            )
-            val canvas = Canvas(bitmap)
-            drawable.setBounds(0, 0, canvas.width, canvas.height)
-            drawable.draw(canvas)
-            return bitmap
-        }
-
-        private fun toMonochromeBitmap(bitmap: Bitmap): Bitmap {
-            val result = Bitmap.createBitmap(bitmap.width, bitmap.height, bitmap.config)
-            val canvas = Canvas(result)
-            val paint = android.graphics.Paint()
-            val cm = ColorMatrix()
-            cm.setSaturation(0f)
-            val filter = ColorMatrixColorFilter(cm)
-            paint.colorFilter = filter
-            canvas.drawBitmap(bitmap, 0f, 0f, paint)
-            return result
-        }
-
-        private fun toMonochromeDrawable(drawable: Drawable, resources: Resources): Drawable {
-            val bitmap = drawableToBitmap(drawable)
-            val monoBitmap = toMonochromeBitmap(bitmap)
-            return BitmapDrawable(resources, monoBitmap)
-        }
-
-        private fun shouldConvertToMonochrome(): Boolean {
-            // 可改为从配置读取，默认 true（与 SystemUIHooker 中 AUTO_FIX 行为一致）
-            return true
         }
     }
 
@@ -176,7 +131,7 @@ class NotificationIconHook : IXposedHookLoadPackage {
 
     private fun applyOriginalAppIcon(
         imageView: ImageView,
-        drawable: Drawable
+        drawable: android.graphics.drawable.Drawable
     ) {
         clearIconStyling(imageView)
 
@@ -185,13 +140,7 @@ class NotificationIconHook : IXposedHookLoadPackage {
         } catch (_: Throwable) {
         }
 
-        val finalDrawable = if (shouldConvertToMonochrome()) {
-            toMonochromeDrawable(drawable, imageView.resources)
-        } else {
-            drawable
-        }
-
-        imageView.setImageDrawable(finalDrawable)
+        imageView.setImageDrawable(drawable)
         imageView.invalidate()
     }
 
