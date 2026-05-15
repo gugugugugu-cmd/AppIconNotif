@@ -17,7 +17,6 @@ class SettingsActivity : Activity() {
             setPadding(50, 50, 50, 50)
         }
 
-        // 获取所有已安装的应用（包括系统应用）
         val pm = packageManager
         val allApps = pm.getInstalledApplications(0)
             .map { it.packageName to pm.getApplicationLabel(it).toString() }
