@@ -16,11 +16,20 @@ class SettingsActivity : Activity() {
 
     private lateinit var listView: ListView
     private lateinit var searchEditText: EditText
-    private lateinit var hideSystemCheckBox: CheckBox
-    private var adapter: AppListAdapter? = null   // 改为可空类型
+    private lateinit var systemBtn: Button
+    private lateinit var thirdPartyBtn: Button
+    private var adapter: AppListAdapter? = null
 
     private val allApps = mutableListOf<AppInfo>()
-    private var displayApps = mutableListOf<AppInfo>()
+    private var systemApps = mutableListOf<AppInfo>()
+    private var thirdPartyApps = mutableListOf<AppInfo>()
+    private var currentDisplayApps = mutableListOf<AppInfo>()
+    private var currentMode = MODE_THIRD_PARTY   // 默认显示第三方应用
+
+    companion object {
+        private const val MODE_SYSTEM = 0
+        private const val MODE_THIRD_PARTY = 1
+    }
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -30,6 +39,7 @@ class SettingsActivity : Activity() {
             setPadding(30, 30, 30, 30)
         }
 
+        // 搜索框
         searchEditText = EditText(this).apply {
             hint = "🔍 搜索应用名或包名"
             addTextChangedListener(object : TextWatcher {
@@ -40,52 +50,104 @@ class SettingsActivity : Activity() {
         }
         mainLayout.addView(searchEditText)
 
-        hideSystemCheckBox = CheckBox(this).apply {
-            text = "隐藏系统应用"
-            setOnCheckedChangeListener { _, _ -> filterAndDisplay() }
+        // 分栏按钮区域
+        val buttonLayout = LinearLayout(this).apply {
+            orientation = LinearLayout.HORIZONTAL
+            layoutParams = LinearLayout.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT,
+                ViewGroup.LayoutParams.WRAP_CONTENT
+            )
         }
-        mainLayout.addView(hideSystemCheckBox)
+        systemBtn = Button(this).apply {
+            text = "系统应用"
+            layoutParams = LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f)
+            setOnClickListener {
+                currentMode = MODE_SYSTEM
+                updateButtonStyle()
+                filterAndDisplay()
+            }
+        }
+        thirdPartyBtn = Button(this).apply {
+            text = "第三方应用"
+            layoutParams = LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f)
+            setOnClickListener {
+                currentMode = MODE_THIRD_PARTY
+                updateButtonStyle()
+                filterAndDisplay()
+            }
+        }
+        buttonLayout.addView(systemBtn)
+        buttonLayout.addView(thirdPartyBtn)
+        mainLayout.addView(buttonLayout)
 
+        // 列表视图
         listView = ListView(this)
         mainLayout.addView(listView)
 
         setContentView(mainLayout)
         loadApps()
+        updateButtonStyle()
+    }
+
+    private fun updateButtonStyle() {
+        if (currentMode == MODE_SYSTEM) {
+            systemBtn.isEnabled = false
+            thirdPartyBtn.isEnabled = true
+            systemBtn.setBackgroundColor(Color.parseColor("#2196F3"))
+            thirdPartyBtn.setBackgroundColor(Color.parseColor("#E0E0E0"))
+        } else {
+            systemBtn.isEnabled = true
+            thirdPartyBtn.isEnabled = false
+            systemBtn.setBackgroundColor(Color.parseColor("#E0E0E0"))
+            thirdPartyBtn.setBackgroundColor(Color.parseColor("#2196F3"))
+        }
     }
 
     private fun loadApps() {
         val pm = packageManager
         val installedApps = pm.getInstalledApplications(0)
         allApps.clear()
+        systemApps.clear()
+        thirdPartyApps.clear()
+
         for (app in installedApps) {
             val label = pm.getApplicationLabel(app).toString()
             val isSystem = (app.flags and ApplicationInfo.FLAG_SYSTEM) != 0
             val icon = app.loadIcon(pm)
-            allApps.add(AppInfo(app.packageName, label, isSystem, icon))
+            val appInfo = AppInfo(app.packageName, label, isSystem, icon)
+            allApps.add(appInfo)
+            if (isSystem) {
+                systemApps.add(appInfo)
+            } else {
+                thirdPartyApps.add(appInfo)
+            }
         }
-        allApps.sortBy { it.label.toLowerCase(Locale.getDefault()) }
+        // 各自排序
+        systemApps.sortBy { it.label.toLowerCase(Locale.getDefault()) }
+        thirdPartyApps.sortBy { it.label.toLowerCase(Locale.getDefault()) }
+
         filterAndDisplay()
     }
 
     private fun filterAndDisplay() {
         val query = searchEditText.text.toString().trim().toLowerCase(Locale.getDefault())
-        val hideSystem = hideSystemCheckBox.isChecked
+        val sourceList = if (currentMode == MODE_SYSTEM) systemApps else thirdPartyApps
 
-        displayApps.clear()
-        for (app in allApps) {
-            if (hideSystem && app.isSystem) continue
-            if (query.isNotEmpty() &&
-                !app.label.toLowerCase(Locale.getDefault()).contains(query) &&
-                !app.packageName.toLowerCase(Locale.getDefault()).contains(query)
-            ) continue
-            displayApps.add(app)
+        currentDisplayApps.clear()
+        for (app in sourceList) {
+            if (query.isEmpty() ||
+                app.label.toLowerCase(Locale.getDefault()).contains(query) ||
+                app.packageName.toLowerCase(Locale.getDefault()).contains(query)
+            ) {
+                currentDisplayApps.add(app)
+            }
         }
 
         if (adapter == null) {
-            adapter = AppListAdapter(this, displayApps)
+            adapter = AppListAdapter(this, currentDisplayApps)
             listView.adapter = adapter
         } else {
-            adapter?.updateList(displayApps)
+            adapter?.updateList(currentDisplayApps)
         }
     }
 
