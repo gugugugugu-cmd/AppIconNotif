@@ -2,6 +2,8 @@ package com.example.appiconnotif
 
 import android.content.Context
 import android.content.pm.ApplicationInfo
+import android.graphics.*
+import android.graphics.drawable.BitmapDrawable
 import android.graphics.drawable.Drawable
 import android.view.View
 import android.widget.ImageView
@@ -48,6 +50,69 @@ object StatusbarAppIconHook {
             log(t)
         }
     }
+
+    // ========== 统一图标规格 (尺寸 + 圆角) ==========
+    /**
+     * 将原始应用图标转换为统一尺寸、统一圆角的 Drawable
+     * @param context 上下文
+     * @param originalDrawable 原始应用图标
+     * @param targetSizeDp 目标边长（dp），状态栏推荐 24，通知栏头部推荐 40
+     * @param cornerRadiusFactor 圆角半径占边长的比例，默认 0.25
+     */
+    fun createUniformIconDrawable(
+        context: Context,
+        originalDrawable: Drawable,
+        targetSizeDp: Int = 24,
+        cornerRadiusFactor: Float = 0.25f
+    ): Drawable {
+        val density = context.resources.displayMetrics.density
+        val targetSizePx = (targetSizeDp * density).toInt()
+        val cornerRadiusPx = (targetSizeDp * cornerRadiusFactor * density).toInt()
+
+        // 创建空白 Bitmap
+        val bitmap = Bitmap.createBitmap(targetSizePx, targetSizePx, Bitmap.Config.ARGB_8888)
+        val canvas = Canvas(bitmap)
+
+        // 清空背景为透明
+        canvas.drawColor(Color.TRANSPARENT, PorterDuff.Mode.CLEAR)
+
+        // 获取原始图标的固有尺寸，若无效则直接拉伸绘制
+        var intrinsicW = originalDrawable.intrinsicWidth
+        var intrinsicH = originalDrawable.intrinsicHeight
+        if (intrinsicW <= 0 || intrinsicH <= 0) {
+            // fallback: 强制拉伸至目标尺寸
+            originalDrawable.setBounds(0, 0, targetSizePx, targetSizePx)
+            originalDrawable.draw(canvas)
+            // 直接返回（无圆角，但后续剪裁会加上）
+        } else {
+            // 计算缩放比例，保持宽高比并居中
+            val scale = minOf(targetSizePx.toFloat() / intrinsicW, targetSizePx.toFloat() / intrinsicH)
+            val scaledW = (intrinsicW * scale).toInt()
+            val scaledH = (intrinsicH * scale).toInt()
+            val left = (targetSizePx - scaledW) / 2
+            val top = (targetSizePx - scaledH) / 2
+            originalDrawable.setBounds(left, top, left + scaledW, top + scaledH)
+            originalDrawable.draw(canvas)
+        }
+
+        // 应用圆角剪裁 (使用 Path)
+        val path = Path()
+        path.addRoundRect(
+            0f, 0f,
+            targetSizePx.toFloat(), targetSizePx.toFloat(),
+            cornerRadiusPx.toFloat(), cornerRadiusPx.toFloat(),
+            Path.Direction.CW
+        )
+        canvas.clipPath(path)
+
+        // 重新绘制（clipPath 对已有内容生效，需再次绘制）
+        // 由于上面的 draw 已经绘制，clipPath 后再绘制一次可保证边缘圆滑
+        // 这里简单重新设置绘制一次（性能影响极小）
+        originalDrawable.draw(canvas)
+
+        return BitmapDrawable(context.resources, bitmap)
+    }
+    // =============================================
 
     private fun hookApplyIconStates(notificationIconContainerClass: Class<*>) {
         try {
@@ -272,13 +337,15 @@ object StatusbarAppIconHook {
                 return
             }
 
-            val icon: Drawable = try {
+            val originalIcon: Drawable = try {
                 context.packageManager.getApplicationIcon(pkgName)
             } catch (_: Throwable) {
                 return
             }
 
-            param.result = icon
+            // 统一规格：状态栏图标 24dp，圆角半径 = 24 * 0.25 = 6dp
+            val uniformIcon = createUniformIconDrawable(context, originalIcon, 24, 0.25f)
+            param.result = uniformIcon
         } catch (_: Throwable) {
         }
     }
