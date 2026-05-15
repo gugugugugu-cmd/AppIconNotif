@@ -3,6 +3,7 @@ package com.example.appiconnotif
 import android.app.Notification
 import android.content.Context
 import android.content.pm.ApplicationInfo
+import android.content.res.Resources
 import android.graphics.Bitmap
 import android.graphics.Canvas
 import android.graphics.Color
@@ -32,7 +33,6 @@ class NotificationIconHook : IXposedHookLoadPackage {
             XposedBridge.log(t)
         }
 
-        // 将 Drawable 转换为 Bitmap
         private fun drawableToBitmap(drawable: Drawable): Bitmap {
             if (drawable is BitmapDrawable && drawable.bitmap != null) {
                 return drawable.bitmap
@@ -48,30 +48,26 @@ class NotificationIconHook : IXposedHookLoadPackage {
             return bitmap
         }
 
-        // 将彩色 Bitmap 转换为单色（灰度）Bitmap
         private fun toMonochromeBitmap(bitmap: Bitmap): Bitmap {
             val result = Bitmap.createBitmap(bitmap.width, bitmap.height, bitmap.config)
             val canvas = Canvas(result)
             val paint = android.graphics.Paint()
             val cm = ColorMatrix()
-            cm.setSaturation(0f) // 去色 → 灰度
+            cm.setSaturation(0f)
             val filter = ColorMatrixColorFilter(cm)
             paint.colorFilter = filter
             canvas.drawBitmap(bitmap, 0f, 0f, paint)
             return result
         }
 
-        // 将 Drawable 转换为单色 Drawable
-        private fun toMonochromeDrawable(drawable: Drawable): Drawable {
+        private fun toMonochromeDrawable(drawable: Drawable, resources: Resources): Drawable {
             val bitmap = drawableToBitmap(drawable)
             val monoBitmap = toMonochromeBitmap(bitmap)
-            return BitmapDrawable(drawable.resources, monoBitmap)
+            return BitmapDrawable(resources, monoBitmap)
         }
 
-        // 判断是否需要转换为单色（可以在这里读取配置，简化起见暂时总是转换）
         private fun shouldConvertToMonochrome(): Boolean {
-            // TODO: 可根据实际需求读取全局配置（例如从 SharedPreferences 或 ContentProvider 读取）
-            // 此处默认返回 true，与 SystemUIHooker 中的 AUTO_FIX 行为一致
+            // 可改为从配置读取，默认 true（与 SystemUIHooker 中 AUTO_FIX 行为一致）
             return true
         }
     }
@@ -145,7 +141,6 @@ class NotificationIconHook : IXposedHookLoadPackage {
                                 SYSTEMUI
                             )
 
-                            // 应用图标并转换为单色
                             applyOriginalAppIcon(iconView, appIcon)
 
                             if (imageIconTagId != 0) {
@@ -190,9 +185,8 @@ class NotificationIconHook : IXposedHookLoadPackage {
         } catch (_: Throwable) {
         }
 
-        // 先替换为应用原始图标，然后根据配置决定是否单色化
         val finalDrawable = if (shouldConvertToMonochrome()) {
-            toMonochromeDrawable(drawable)
+            toMonochromeDrawable(drawable, imageView.resources)
         } else {
             drawable
         }

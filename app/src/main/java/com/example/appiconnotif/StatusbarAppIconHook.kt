@@ -2,6 +2,7 @@ package com.example.appiconnotif
 
 import android.content.Context
 import android.content.pm.ApplicationInfo
+import android.content.res.Resources
 import android.graphics.Bitmap
 import android.graphics.Canvas
 import android.graphics.ColorMatrix
@@ -27,7 +28,6 @@ object StatusbarAppIconHook {
         XposedBridge.log(t)
     }
 
-    // 将 Drawable 转换为 Bitmap
     private fun drawableToBitmap(drawable: Drawable): Bitmap {
         if (drawable is BitmapDrawable && drawable.bitmap != null) {
             return drawable.bitmap
@@ -43,7 +43,6 @@ object StatusbarAppIconHook {
         return bitmap
     }
 
-    // 将彩色 Bitmap 转换为单色（灰度）Bitmap
     private fun toMonochromeBitmap(bitmap: Bitmap): Bitmap {
         val result = Bitmap.createBitmap(bitmap.width, bitmap.height, bitmap.config)
         val canvas = Canvas(result)
@@ -56,14 +55,12 @@ object StatusbarAppIconHook {
         return result
     }
 
-    // 将 Drawable 转换为单色 Drawable
-    private fun toMonochromeDrawable(drawable: Drawable): Drawable {
+    private fun toMonochromeDrawable(drawable: Drawable, resources: Resources): Drawable {
         val bitmap = drawableToBitmap(drawable)
         val monoBitmap = toMonochromeBitmap(bitmap)
-        return BitmapDrawable(drawable.resources, monoBitmap)
+        return BitmapDrawable(resources, monoBitmap)
     }
 
-    // 判断是否需要转换为单色（可在此接入配置，默认 true）
     private fun shouldConvertToMonochrome(): Boolean {
         return true
     }
@@ -324,9 +321,8 @@ object StatusbarAppIconHook {
                 return
             }
 
-            // 根据配置决定是否转换为单色
             val finalIcon = if (shouldConvertToMonochrome()) {
-                toMonochromeDrawable(icon)
+                toMonochromeDrawable(icon, context.resources)
             } else {
                 icon
             }
