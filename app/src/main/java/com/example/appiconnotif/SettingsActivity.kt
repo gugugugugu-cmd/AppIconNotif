@@ -104,18 +104,20 @@ class SettingsActivity : Activity() {
         override fun getItemId(pos: Int): Long = pos.toLong()
 
         override fun getView(pos: Int, convertView: View?, parent: ViewGroup?): View {
-            val view = convertView ?: LinearLayout(context).apply {
-                orientation = LinearLayout.HORIZONTAL
-                setPadding(20, 20, 20, 20)
-                layoutParams = AbsListView.LayoutParams(
-                    ViewGroup.LayoutParams.MATCH_PARENT,
-                    ViewGroup.LayoutParams.WRAP_CONTENT
-                )
+            val linearLayout = if (convertView is LinearLayout) {
+                convertView.apply { removeAllViews() }
+            } else {
+                LinearLayout(context).apply {
+                    orientation = LinearLayout.HORIZONTAL
+                    setPadding(20, 20, 20, 20)
+                    layoutParams = AbsListView.LayoutParams(
+                        ViewGroup.LayoutParams.MATCH_PARENT,
+                        ViewGroup.LayoutParams.WRAP_CONTENT
+                    )
+                }
             }
-            val app = getItem(pos)
 
-            // 移除原有子视图（如果复用）
-            if (view is LinearLayout) view.removeAllViews()
+            val app = getItem(pos)
 
             // 应用图标
             val iconView = ImageView(context).apply {
@@ -148,10 +150,10 @@ class SettingsActivity : Activity() {
                 }
             }
 
-            view.addView(iconView)
-            view.addView(textLayout)
-            view.addView(switch)
-            return view
+            linearLayout.addView(iconView)
+            linearLayout.addView(textLayout)
+            linearLayout.addView(switch)
+            return linearLayout
         }
     }
 }
