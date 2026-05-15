@@ -29,8 +29,8 @@ class NotificationIconHook : IXposedHookLoadPackage {
     override fun handleLoadPackage(lpparam: XC_LoadPackage.LoadPackageParam) {
         if (lpparam.packageName != SYSTEMUI) return
 
-        // 初始化配置
-        PerAppConfig.init()
+        // 初始化配置（只读模式）
+        PerAppConfig.initForRead()
 
         hookNotificationHeaderViewWrapper(lpparam)
         StatusbarAppIconHook.hook(lpparam)
@@ -84,10 +84,9 @@ class NotificationIconHook : IXposedHookLoadPackage {
                                 return
                             }
 
-                            // 【修改点】根据包名开关决定是否替换
+                            // 检查开关
                             if (!PerAppConfig.isReplacementEnabled(pkgName)) return
 
-                            // 获取应用自身图标
                             val appIcon = try {
                                 iconView.context.packageManager.getApplicationIcon(pkgName)
                             } catch (_: Throwable) {

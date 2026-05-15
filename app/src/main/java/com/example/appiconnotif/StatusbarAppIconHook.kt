@@ -140,7 +140,6 @@ object StatusbarAppIconHook {
                                 null
                             } ?: return
 
-                            // 【修改点】如果该应用启用了替换，则跳过系统着色（避免覆盖应用图标本色）
                             if (PerAppConfig.isReplacementEnabled(pkgName)) {
                                 param.result = null
                             }
@@ -210,9 +209,6 @@ object StatusbarAppIconHook {
         }
     }
 
-    /**
-     * 移除状态栏图标的着色（仅当该应用启用了替换时）
-     */
     private fun removeTintForStatusbarIcon(icon: View) {
         try {
             val statusBarIcon = XposedHelpers.getObjectField(icon, "mIcon")
@@ -220,7 +216,6 @@ object StatusbarAppIconHook {
 
             val context = (icon as? ImageView)?.context ?: return
 
-            // 【修改点】只对启用了替换的应用移除着色
             if (PerAppConfig.isReplacementEnabled(pkgName)) {
                 try {
                     XposedHelpers.setIntField(icon, "mCurrentSetColor", 0)
@@ -261,7 +256,6 @@ object StatusbarAppIconHook {
             val pkgName =
                 XposedHelpers.getObjectField(statusBarIcon, "pkg") as? String ?: return
 
-            // 【修改点】根据包名开关决定是否替换
             if (!PerAppConfig.isReplacementEnabled(pkgName)) return
 
             val icon: Drawable = try {

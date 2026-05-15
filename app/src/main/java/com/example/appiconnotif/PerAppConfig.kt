@@ -1,63 +1,76 @@
 package com.example.appiconnotif
 
 import android.content.Context
-import de.robv.android.xposed.XSharedPreferences
+import android.util.Log
+import org.json.JSONObject
 import java.io.File
-import java.io.FileOutputStream
-import java.util.*
 
 object PerAppConfig {
-    private const val PREFS_NAME = "app_icon_notif_per_app.xml"
-    private const val MODULE_PACKAGE_NAME = "com.example.appiconnotif"
-    private var xsp: XSharedPreferences? = null
+    private const val CONFIG_FILE = "app_icon_config.json"
+    private lateinit var configFile: File
+    private var configCache: JSONObject? = null
+    private var isInit = false
 
-    fun init() {
-        xsp = XSharedPreferences(MODULE_PACKAGE_NAME, PREFS_NAME.replace(".xml", ""))
-        xsp?.makeWorldReadable()
-    }
-
-    /**
-     * 读取指定包名的开关状态（供 SystemUI 使用）
-     */
-    fun isReplacementEnabled(pkgName: String): Boolean {
-        val prefs = xsp ?: return true
-        prefs.reload()
-        return prefs.getBoolean("enable_$pkgName", true)
-    }
-
-    /**
-     * 写入指定包名的开关状态（供 SettingsActivity 使用）
-     * 直接操作 XML 文件并设置全局可读权限
-     */
-    fun setReplacementEnabled(pkgName: String, enabled: Boolean, context: Context) {
-        // 获取 SharedPreferences 文件路径
-        val prefsFile = File(context.applicationInfo.dataDir, "shared_prefs/$PREFS_NAME")
-        val prefsDir = prefsFile.parentFile
-        if (!prefsDir.exists()) prefsDir.mkdirs()
-
-        // 读取现有内容或创建新内容
-        val map = mutableMapOf<String, Any>()
-        if (prefsFile.exists()) {
+    // 在 SettingsActivity 中调用（写入模式）
+    fun init(context: Context) {
+        if (isInit) return
+        configFile = File(context.applicationInfo.dataDir, CONFIG_FILE)
+        if (!configFile.exists()) {
             try {
-                // 简单解析 XML（这里为了简化，使用 Android 的 SharedPreferences 读取再写入）
-                // 但为了避免冲突，直接使用原生的 getSharedPreferences 读取并修改
-            } catch (e: Exception) { }
+                configFile.createNewFile()
+                configFile.setReadable(true, false)   // 全局可读
+                configFile.setWritable(true, true)    // 仅自己可写
+                configFile.writeText("{}")
+            } catch (e: Exception) {
+                Log.e("AppIconNotif", "创建配置文件失败", e)
+            }
         }
+        loadConfig()
+        isInit = true
+    }
 
-        // 使用标准方式写入（但最后会修改权限）
-        val prefs = context.getSharedPreferences(PREFS_NAME.replace(".xml", ""), Context.MODE_PRIVATE)
-        prefs.edit().putBoolean("enable_$pkgName", enabled).apply()
+    // 在 SystemUI 进程中调用（只读模式）
+    fun initForRead() {
+        if (isInit) return
+        configFile = File("/data/data/com.example.appiconnotif/$CONFIG_FILE")
+        if (configFile.exists()) {
+            loadConfig()
+        } else {
+            configCache = JSONObject()
+        }
+        isInit = true
+    }
 
-        // 强制设置文件权限为 0644（全局可读）
-        try {
-            prefsFile.setReadable(true, false)
-            prefsFile.setWritable(true, true)  // 仅自己可写
+    private fun loadConfig() {
+        configCache = try {
+            JSONObject(configFile.readText())
         } catch (e: Exception) {
-            e.printStackTrace()
+            JSONObject()
         }
+    }
 
-        // 同时尝试让目录也可读
-        prefsDir.setReadable(true, false)
-        prefsDir.setExecutable(true, false)
+    private fun saveConfig() {
+        try {
+            configFile.writeText(configCache.toString())
+            configFile.setReadable(true, false) // 确保权限
+        } catch (e: Exception) {
+            Log.e("AppIconNotif", "保存配置失败", e)
+        }
+    }
+
+    fun isReplacementEnabled(pkgName: String): Boolean {
+        if (configCache == null) {
+            // 尝试加载（若之前未加载）
+            if (configFile.exists()) loadConfig()
+            else configCache = JSONObject()
+        }
+        return configCache?.optBoolean(pkgName, true) ?: true
+    }
+
+    fun setReplacementEnabled(pkgName: String, enabled: Boolean, context: Context) {
+        if (!isInit) init(context)
+        if (configCache == null) loadConfig()
+        configCache?.put(pkgName, enabled)
+        saveConfig()
     }
 }

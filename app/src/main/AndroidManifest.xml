@@ -1,10 +1,9 @@
 <manifest xmlns:android="http://schemas.android.com/apk/res/android"
     package="com.example.appiconnotif">
 
-    <!-- 添加权限：允许查询所有已安装应用 -->
+    <!-- 权限：允许查询所有已安装应用 -->
     <uses-permission android:name="android.permission.QUERY_ALL_PACKAGES" />
 
-    <!-- 可选：声明需要查询的应用范围 -->
     <queries>
         <intent>
             <action android:name="android.intent.action.MAIN" />
@@ -44,5 +43,4 @@
             android:name="xposedscope"
             android:value="com.android.systemui" />
     </application>
-
 </manifest>
