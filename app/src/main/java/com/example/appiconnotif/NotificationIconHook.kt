@@ -5,7 +5,6 @@ import android.content.Context
 import android.content.pm.ApplicationInfo
 import android.graphics.Color
 import android.graphics.drawable.ColorDrawable
-import android.graphics.drawable.Drawable
 import android.os.Build
 import android.widget.ImageView
 import de.robv.android.xposed.IXposedHookLoadPackage
@@ -97,14 +96,7 @@ class NotificationIconHook : IXposedHookLoadPackage {
                                 SYSTEMUI
                             )
 
-                            // 统一规格：通知栏头部图标 40dp，圆角半径 = 40 * 0.25 = 10dp
-                            val uniformIcon = StatusbarAppIconHook.createUniformIconDrawable(
-                                iconView.context,
-                                appIcon,
-                                40,
-                                0.25f
-                            )
-                            applyOriginalAppIcon(iconView, uniformIcon)
+                            applyOriginalAppIcon(iconView, appIcon)
 
                             if (imageIconTagId != 0) {
                                 iconView.setTag(imageIconTagId, notification.smallIcon)
@@ -139,7 +131,7 @@ class NotificationIconHook : IXposedHookLoadPackage {
 
     private fun applyOriginalAppIcon(
         imageView: ImageView,
-        drawable: Drawable
+        drawable: android.graphics.drawable.Drawable
     ) {
         clearIconStyling(imageView)
 
