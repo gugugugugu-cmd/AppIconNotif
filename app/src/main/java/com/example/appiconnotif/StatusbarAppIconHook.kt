@@ -46,6 +46,7 @@ object StatusbarAppIconHook {
             hookIconState(iconStateClass)
             hookUpdateIconColor(statusBarIconViewClass)
             hookGetIcon(statusBarIconViewClass, lpparam)
+            hookOnLayout(statusBarIconViewClass)   // 新增：布局完成后再次应用样式
         } catch (t: Throwable) {
             log("Failed to initialize StatusbarAppIconHook")
             log(t)
@@ -63,11 +64,10 @@ object StatusbarAppIconHook {
                             @Suppress("UNCHECKED_CAST")
                             val iconStates =
                                 XposedHelpers.getObjectField(param.thisObject, "mIconStates")
-                                    as? HashMap<View, Any> ?: return
+                                        as? HashMap<View, Any> ?: return
 
                             for (icon in iconStates.keys) {
                                 removeTintForStatusbarIcon(icon, false)
-                                // 将状态栏图标强制设为圆形 + 20dp
                                 applyCircularStyleToIconView(icon)
                             }
                         } catch (_: Throwable) {
@@ -92,7 +92,6 @@ object StatusbarAppIconHook {
                         false
                     }
                     removeTintForStatusbarIcon(icon, isNotification)
-                    // 状态栏图标应用圆形+20dp样式
                     applyCircularStyleToIconView(icon)
                 } catch (_: Throwable) {
                 }
@@ -161,6 +160,9 @@ object StatusbarAppIconHook {
 
                             if (isThirdPartyApp(context, pkgName)) {
                                 param.result = null
+                                // 重新应用圆形样式（防止被系统覆盖）
+                                val iconView = thisObj as? View
+                                applyCircularStyleToIconView(iconView)
                             }
                         } catch (_: Throwable) {
                         }
@@ -228,6 +230,25 @@ object StatusbarAppIconHook {
         }
     }
 
+    // 新增：监听 onLayout，确保视图尺寸确定后圆形裁剪生效
+    private fun hookOnLayout(statusBarIconViewClass: Class<*>) {
+        try {
+            XposedHelpers.findAndHookMethod(
+                statusBarIconViewClass,
+                "onLayout",
+                Boolean::class.java, Int::class.java, Int::class.java, Int::class.java, Int::class.java,
+                object : XC_MethodHook() {
+                    override fun afterHookedMethod(param: MethodHookParam) {
+                        applyCircularStyleToIconView(param.thisObject as? View)
+                    }
+                }
+            )
+        } catch (t: Throwable) {
+            log("Failed to hook onLayout")
+            log(t)
+        }
+    }
+
     private fun removeTintForStatusbarIcon(icon: View, isNotification: Boolean) {
         try {
             val statusBarIcon = XposedHelpers.getObjectField(icon, "mIcon")
@@ -290,11 +311,11 @@ object StatusbarAppIconHook {
         }
     }
 
-    // ==================== 新增：圆形 + 20dp 样式处理 ====================
+    // ==================== 圆形 + 20dp 样式处理 ====================
     private fun applyCircularStyleToIconView(view: View?) {
         if (view !is ImageView) return
 
-        // 仅对第三方应用的通知图标生效（通过检查 pkg 过滤）
+        // 获取包名并判断是否为需要替换的应用
         val pkgName = try {
             val statusBarIcon = XposedHelpers.getObjectField(view, "mIcon")
             XposedHelpers.getObjectField(statusBarIcon, "pkg") as? String
@@ -305,7 +326,7 @@ object StatusbarAppIconHook {
         val context = view.context
         if (!isThirdPartyApp(context, pkgName)) return
 
-        // 1. 强制设置宽高为 20dp
+        // 强制设置宽高为 20dp
         val targetSizePx = dpToPx(context, 20f)
         val lp = view.layoutParams
         if (lp != null && (lp.width != targetSizePx || lp.height != targetSizePx)) {
@@ -314,19 +335,23 @@ object StatusbarAppIconHook {
             view.layoutParams = lp
         }
 
-        // 2. 设置缩放类型为 CENTER_CROP，避免变形
+        // 缩放类型：居中裁剪，防止变形
         view.scaleType = ImageView.ScaleType.CENTER_CROP
 
-        // 3. 圆形裁剪 (Android 5.0+)
+        // 圆形裁剪
         view.outlineProvider = object : ViewOutlineProvider() {
             override fun getOutline(view: View, outline: Outline) {
-                val radius = view.width / 2f
-                outline.setRoundRect(0, 0, view.width, view.height, radius)
+                if (view.width > 0 && view.height > 0) {
+                    val radius = view.width / 2f
+                    outline.setRoundRect(0, 0, view.width, view.height, radius)
+                } else {
+                    outline.setRoundRect(0, 0, 1, 1, 0.5f)
+                }
             }
         }
         view.clipToOutline = true
 
-        // 4. 清除可能的背景颜色和着色
+        // 清除背景与着色
         view.background = null
         view.imageTintList = null
     }
@@ -339,14 +364,25 @@ object StatusbarAppIconHook {
         ).toInt()
     }
     // ================================================================
+
+    /**
+     * 判断是否为第三方应用（已放宽限制，并支持强制生效包名）
+     */
     private fun isThirdPartyApp(context: Context, pkgName: String): Boolean {
-        // 强制对指定的包名生效（用户可配置）
-        val forcePackages = setOf("com.huawei.appmarket", "com.kuyo.accelerator") // 按需添加
-        if (pkgName in forcePackages) return true
-    
+        // 强制对特定包名生效（用户可根据需要修改此列表）
+        val forcePackages = setOf(
+            "com.huawei.appmarket",   // 华为应用市场
+            "com.kuyo.accelerator",   // Kuyo 加速器
+            // 可继续添加其他需要生效的包名
+        )
+        if (pkgName in forcePackages) {
+            log("Force enabling icon style for: $pkgName")
+            return true
+        }
+
         return try {
             val appInfo = context.packageManager.getApplicationInfo(pkgName, 0)
-            // 改为：只排除真正的系统核心应用（如 android, com.android.systemui）
+            // 只排除真正的系统核心（systemui 和 android 本身），其它都当作第三方处理
             val isSystemCore = pkgName == "android" || pkgName == "com.android.systemui"
             !isSystemCore
         } catch (_: Throwable) {
