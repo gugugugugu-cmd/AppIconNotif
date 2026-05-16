@@ -339,14 +339,16 @@ object StatusbarAppIconHook {
         ).toInt()
     }
     // ================================================================
-
     private fun isThirdPartyApp(context: Context, pkgName: String): Boolean {
+        // 强制对指定的包名生效（用户可配置）
+        val forcePackages = setOf("com.huawei.appmarket", "com.kuyo.accelerator") // 按需添加
+        if (pkgName in forcePackages) return true
+    
         return try {
             val appInfo = context.packageManager.getApplicationInfo(pkgName, 0)
-            val isSystemApp = (appInfo.flags and ApplicationInfo.FLAG_SYSTEM) != 0
-            val isUpdatedSystemApp =
-                (appInfo.flags and ApplicationInfo.FLAG_UPDATED_SYSTEM_APP) != 0
-            !isSystemApp && !isUpdatedSystemApp
+            // 改为：只排除真正的系统核心应用（如 android, com.android.systemui）
+            val isSystemCore = pkgName == "android" || pkgName == "com.android.systemui"
+            !isSystemCore
         } catch (_: Throwable) {
             false
         }
