@@ -20,9 +20,6 @@ object StatusbarAppIconHook {
     private const val SYSTEMUI = "com.android.systemui"
     private const val TARGET_ICON_DP = 20f
 
-    // 用于防重入的 Tag Key (使用系统未使用的 id)
-    private val PROCESSED_TAG = View.generateViewId()
-
     private fun log(msg: String) {
         XposedBridge.log("$TAG: $msg")
     }
@@ -314,17 +311,11 @@ object StatusbarAppIconHook {
     }
 
     // ===================================================================
-    //  核心样式应用方法（使用 ViewOutlineProvider 圆形裁剪）
+    //  核心样式应用方法（ViewOutlineProvider 圆形裁剪 + 强制图标重置）
     // ===================================================================
     private fun applyUniformStyle(view: View?) {
         if (view !is ImageView) {
             log("[applyUniformStyle] view is not ImageView, skip")
-            return
-        }
-
-        // 防重入标记
-        if (view.getTag(PROCESSED_TAG) == true) {
-            log("[applyUniformStyle] Already processed, skip")
             return
         }
 
@@ -339,20 +330,22 @@ object StatusbarAppIconHook {
             return
         }
 
-        // 确保图标是应用原始图标（防止系统覆盖）
+        // 1. 强制设置应用原始图标（防止系统覆盖）
         val appIcon = getApplicationIcon(view.context, pkgName)
-        if (appIcon != null && view.drawable !== appIcon) {
-            view.setImageDrawable(appIcon)
-            log("[applyUniformStyle] Reset drawable to app icon for $pkgName")
-        } else if (appIcon == null) {
+        if (appIcon != null) {
+            if (view.drawable !== appIcon) {
+                view.setImageDrawable(appIcon)
+                log("[applyUniformStyle] Reset drawable to app icon for $pkgName")
+            }
+        } else {
             log("[applyUniformStyle] Cannot get app icon for $pkgName, skip")
             return
         }
 
         val targetSizePx = dpToPx(view.context, TARGET_ICON_DP)
 
-        // 延迟设置尺寸和裁剪，避免 layoutParams 为 null
-        fun applySizeAndClip() {
+        // 2. 设置尺寸（如果 layoutParams 为 null，延迟重试）
+        fun setSizeAndClip() {
             try {
                 val lp = view.layoutParams
                 if (lp != null) {
@@ -365,18 +358,24 @@ object StatusbarAppIconHook {
                         lp.height = targetSizePx
                         changed = true
                     }
-                    if (changed) view.layoutParams = lp
+                    if (changed) {
+                        view.layoutParams = lp
+                        log("[applyUniformStyle] LayoutParams updated to ${targetSizePx}x${targetSizePx}")
+                    } else {
+                        log("[applyUniformStyle] LayoutParams already correct")
+                    }
                 } else {
-                    log("[applyUniformStyle] layoutParams is null, retry after layout")
-                    view.post { applySizeAndClip() }
+                    log("[applyUniformStyle] layoutParams is null, will retry after layout")
+                    view.post { setSizeAndClip() }
                     return
                 }
             } catch (t: Throwable) {
                 log("[applyUniformStyle] LayoutParams error: ${t.message}")
             }
 
-            // 使用 ViewOutlineProvider 实现圆形裁剪
+            // 3. 设置圆形裁剪（OutlineProvider）
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.LOLLIPOP) {
+                // 确保每次重新设置，避免被系统覆盖
                 view.outlineProvider = object : ViewOutlineProvider() {
                     override fun getOutline(view: View, outline: Outline) {
                         val w = view.width
@@ -390,22 +389,24 @@ object StatusbarAppIconHook {
                     }
                 }
                 view.clipToOutline = true
+                // 强制刷新 Outline
+                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
+                    view.invalidateOutline()
+                }
                 log("[applyUniformStyle] Round clip (OutlineProvider) set for $pkgName")
             } else {
-                // 低版本回退方案：使用 Bitmap 圆形 Drawable
+                // 低版本回退方案（基本不会用到）
                 val fallbackDrawable = createRoundDrawable(view.context, appIcon, targetSizePx)
                 if (fallbackDrawable != null) {
                     view.setImageDrawable(fallbackDrawable)
                     log("[applyUniformStyle] Fallback round drawable set for $pkgName")
-                } else {
-                    log("[applyUniformStyle] Fallback round drawable creation failed for $pkgName")
                 }
             }
         }
 
-        applySizeAndClip()
+        setSizeAndClip()
 
-        // 清除所有可能影响外观的属性
+        // 4. 清除所有干扰属性
         view.setPadding(0, 0, 0, 0)
         view.background = null
         view.scaleType = ImageView.ScaleType.CENTER_CROP
@@ -413,7 +414,6 @@ object StatusbarAppIconHook {
         clearTint(view)
 
         view.invalidate()
-        view.setTag(PROCESSED_TAG, true)  // 标记已处理
         log("[applyUniformStyle] === Exiting for $pkgName ===")
     }
 
@@ -430,7 +430,7 @@ object StatusbarAppIconHook {
             val canvas = android.graphics.Canvas(bitmap)
             val paint = android.graphics.Paint(android.graphics.Paint.ANTI_ALIAS_FLAG)
             val radius = targetSizePx / 2f
-            // 先绘制一个透明圆形作为剪裁区域
+            // 先绘制透明圆形作为剪裁区域
             paint.color = android.graphics.Color.TRANSPARENT
             canvas.drawCircle(radius, radius, radius, paint)
             paint.xfermode = android.graphics.PorterDuffXfermode(android.graphics.PorterDuff.Mode.SRC_ATOP)
