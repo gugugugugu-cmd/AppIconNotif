@@ -2,15 +2,12 @@ package com.example.appiconnotif
 
 import android.content.Context
 import android.content.pm.ApplicationInfo
-import android.graphics.Bitmap
-import android.graphics.Canvas
-import android.graphics.Paint
-import android.graphics.PorterDuff
-import android.graphics.PorterDuffXfermode
-import android.graphics.drawable.BitmapDrawable
+import android.graphics.Outline
 import android.graphics.drawable.Drawable
+import android.os.Build
 import android.util.TypedValue
 import android.view.View
+import android.view.ViewOutlineProvider
 import android.widget.ImageView
 import de.robv.android.xposed.XC_MethodHook
 import de.robv.android.xposed.XposedBridge
@@ -23,6 +20,9 @@ object StatusbarAppIconHook {
     private const val SYSTEMUI = "com.android.systemui"
     private const val TARGET_ICON_DP = 20f
 
+    // 用于防重入的 Tag Key (使用系统未使用的 id)
+    private val PROCESSED_TAG = View.generateViewId()
+
     private fun log(msg: String) {
         XposedBridge.log("$TAG: $msg")
     }
@@ -34,7 +34,6 @@ object StatusbarAppIconHook {
     fun hook(lpparam: XC_LoadPackage.LoadPackageParam) {
         log("=== StatusbarAppIconHook.hook() started ===")
 
-        // 查找 StatusBarIconView 类
         var statusBarIconViewClass: Class<*>? = null
         try {
             statusBarIconViewClass = XposedHelpers.findClass(
@@ -48,7 +47,6 @@ object StatusbarAppIconHook {
             return
         }
 
-        // 查找 NotificationIconContainer 类
         var notificationIconContainerClass: Class<*>? = null
         try {
             notificationIconContainerClass = XposedHelpers.findClass(
@@ -61,7 +59,6 @@ object StatusbarAppIconHook {
             log(t)
         }
 
-        // 查找 IconState 类
         var iconStateClass: Class<*>? = null
         try {
             iconStateClass = XposedHelpers.findClass(
@@ -74,7 +71,6 @@ object StatusbarAppIconHook {
             log(t)
         }
 
-        // 安装各个 Hook
         hookGetIcon(statusBarIconViewClass, lpparam)
         hookUpdateIconColor(statusBarIconViewClass)
         hookOnLayout(statusBarIconViewClass)
@@ -318,11 +314,17 @@ object StatusbarAppIconHook {
     }
 
     // ===================================================================
-    //  核心样式应用方法（圆形 Drawable 方案 - 修复版）
+    //  核心样式应用方法（使用 ViewOutlineProvider 圆形裁剪）
     // ===================================================================
     private fun applyUniformStyle(view: View?) {
         if (view !is ImageView) {
             log("[applyUniformStyle] view is not ImageView, skip")
+            return
+        }
+
+        // 防重入标记
+        if (view.getTag(PROCESSED_TAG) == true) {
+            log("[applyUniformStyle] Already processed, skip")
             return
         }
 
@@ -337,71 +339,86 @@ object StatusbarAppIconHook {
             return
         }
 
-        // 获取应用原始图标
+        // 确保图标是应用原始图标（防止系统覆盖）
         val appIcon = getApplicationIcon(view.context, pkgName)
-        if (appIcon == null) {
-            log("[applyUniformStyle] getApplicationIcon returned null for $pkgName")
+        if (appIcon != null && view.drawable !== appIcon) {
+            view.setImageDrawable(appIcon)
+            log("[applyUniformStyle] Reset drawable to app icon for $pkgName")
+        } else if (appIcon == null) {
+            log("[applyUniformStyle] Cannot get app icon for $pkgName, skip")
             return
         }
 
         val targetSizePx = dpToPx(view.context, TARGET_ICON_DP)
 
-        // 转换为圆形 Drawable（修复版本）
-        val roundDrawable = createRoundDrawable(view.context, appIcon, targetSizePx)
-        if (roundDrawable != null) {
-            view.setImageDrawable(roundDrawable)
-            log("[applyUniformStyle] Round drawable set for $pkgName")
-        } else {
-            // 回退：设置原始图标
-            view.setImageDrawable(appIcon)
-            log("[applyUniformStyle] Fallback to original drawable for $pkgName")
-        }
-
-        // 缩放模式（圆形 Drawable 已填满，但保留确保）
-        view.scaleType = ImageView.ScaleType.FIT_CENTER
-        view.adjustViewBounds = true
-
-        // 固定尺寸（增加延迟处理）
-        try {
-            val lp = view.layoutParams
-            if (lp != null) {
-                var changed = false
-                if (lp.width != targetSizePx) {
-                    lp.width = targetSizePx
-                    changed = true
+        // 延迟设置尺寸和裁剪，避免 layoutParams 为 null
+        fun applySizeAndClip() {
+            try {
+                val lp = view.layoutParams
+                if (lp != null) {
+                    var changed = false
+                    if (lp.width != targetSizePx) {
+                        lp.width = targetSizePx
+                        changed = true
+                    }
+                    if (lp.height != targetSizePx) {
+                        lp.height = targetSizePx
+                        changed = true
+                    }
+                    if (changed) view.layoutParams = lp
+                } else {
+                    log("[applyUniformStyle] layoutParams is null, retry after layout")
+                    view.post { applySizeAndClip() }
+                    return
                 }
-                if (lp.height != targetSizePx) {
-                    lp.height = targetSizePx
-                    changed = true
-                }
-                if (changed) view.layoutParams = lp
-            } else {
-                log("[applyUniformStyle] layoutParams is null, will retry after layout")
-                view.post { applyUniformStyle(view) }
-                return
+            } catch (t: Throwable) {
+                log("[applyUniformStyle] LayoutParams error: ${t.message}")
             }
-        } catch (t: Throwable) {
-            log("[applyUniformStyle] LayoutParams error: ${t.message}")
+
+            // 使用 ViewOutlineProvider 实现圆形裁剪
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.LOLLIPOP) {
+                view.outlineProvider = object : ViewOutlineProvider() {
+                    override fun getOutline(view: View, outline: Outline) {
+                        val w = view.width
+                        val h = view.height
+                        if (w > 0 && h > 0) {
+                            val radius = minOf(w, h) / 2f
+                            outline.setRoundRect(0, 0, w, h, radius)
+                        } else {
+                            outline.setEmpty()
+                        }
+                    }
+                }
+                view.clipToOutline = true
+                log("[applyUniformStyle] Round clip (OutlineProvider) set for $pkgName")
+            } else {
+                // 低版本回退方案：使用 Bitmap 圆形 Drawable
+                val fallbackDrawable = createRoundDrawable(view.context, appIcon, targetSizePx)
+                if (fallbackDrawable != null) {
+                    view.setImageDrawable(fallbackDrawable)
+                    log("[applyUniformStyle] Fallback round drawable set for $pkgName")
+                } else {
+                    log("[applyUniformStyle] Fallback round drawable creation failed for $pkgName")
+                }
+            }
         }
 
-        // 清除 padding 和 background
+        applySizeAndClip()
+
+        // 清除所有可能影响外观的属性
         view.setPadding(0, 0, 0, 0)
         view.background = null
-
-        // 清除着色
+        view.scaleType = ImageView.ScaleType.CENTER_CROP
+        view.adjustViewBounds = true
         clearTint(view)
 
-        // 关闭系统裁剪，避免干扰
-        view.clipToOutline = false
-
-        // 刷新
         view.invalidate()
+        view.setTag(PROCESSED_TAG, true)  // 标记已处理
         log("[applyUniformStyle] === Exiting for $pkgName ===")
     }
 
     /**
-     * 将原始 Drawable 转换为指定大小的圆形 Drawable。
-     * 修复：使用 DST_IN 模式正确绘制圆形图标，避免黑色背景。
+     * 低版本备用方案：将 Drawable 转换为指定大小的圆形 BitmapDrawable
      */
     private fun createRoundDrawable(
         context: Context,
@@ -409,28 +426,26 @@ object StatusbarAppIconHook {
         targetSizePx: Int
     ): Drawable? {
         return try {
-            // 创建一个空 Bitmap
-            val bitmap = Bitmap.createBitmap(targetSizePx, targetSizePx, Bitmap.Config.ARGB_8888)
-            val canvas = Canvas(bitmap)
-            // 绘制圆形剪裁（透明背景）
-            val paint = Paint(Paint.ANTI_ALIAS_FLAG)
+            val bitmap = android.graphics.Bitmap.createBitmap(targetSizePx, targetSizePx, android.graphics.Bitmap.Config.ARGB_8888)
+            val canvas = android.graphics.Canvas(bitmap)
+            val paint = android.graphics.Paint(android.graphics.Paint.ANTI_ALIAS_FLAG)
             val radius = targetSizePx / 2f
-            // 先绘制一个圆形（这里不填充颜色，仅用于剪裁）
+            // 先绘制一个透明圆形作为剪裁区域
             paint.color = android.graphics.Color.TRANSPARENT
             canvas.drawCircle(radius, radius, radius, paint)
-            // 设置混合模式：只保留圆形区域内的内容
-            paint.xfermode = PorterDuffXfermode(PorterDuff.Mode.SRC_ATOP)
-            // 绘制原始图标
+            paint.xfermode = android.graphics.PorterDuffXfermode(android.graphics.PorterDuff.Mode.SRC_ATOP)
             original.setBounds(0, 0, targetSizePx, targetSizePx)
             original.draw(canvas)
-            // 可选：用透明背景填充圆形外部（上面已经透明）
-            BitmapDrawable(context.resources, bitmap)
+            android.graphics.drawable.BitmapDrawable(context.resources, bitmap)
         } catch (t: Throwable) {
             log("[createRoundDrawable] Failed: ${t.message}")
             null
         }
     }
 
+    /**
+     * 彻底清除 ImageView 的着色
+     */
     private fun clearTint(imageView: ImageView) {
         log("[clearTint] Entering for $imageView")
         try {
@@ -438,13 +453,15 @@ object StatusbarAppIconHook {
             imageView.clearColorFilter()
             @Suppress("DEPRECATION")
             imageView.setColorFilter(null)
-            // 尝试清除内部着色字段
+            // 反射清除内部着色字段
             try {
                 XposedHelpers.setIntField(imageView, "mCurrentSetColor", 0)
-            } catch (_: Throwable) {
-                try {
-                    XposedHelpers.setObjectField(imageView, "mCurrentSetColor", 0)
-                } catch (_: Throwable) { }
+            } catch (_: Throwable) { }
+            try {
+                XposedHelpers.setObjectField(imageView, "mDrawableColor", 0)
+            } catch (_: Throwable) { }
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
+                imageView.imageTintBlendMode = null
             }
             log("[clearTint] Tint cleared")
         } catch (t: Throwable) {
