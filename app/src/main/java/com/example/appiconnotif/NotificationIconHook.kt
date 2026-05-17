@@ -7,10 +7,11 @@ import de.robv.android.xposed.callbacks.XC_LoadPackage
 class NotificationIconHook : IXposedHookLoadPackage {
 
     companion object {
+        private const val TAG = "AppIconNotif"
         private const val SYSTEMUI = "com.android.systemui"
 
         private fun log(msg: String) {
-            XposedBridge.log("AppIconNotif: $msg")
+            XposedBridge.log("$TAG: $msg")
         }
 
         private fun log(t: Throwable) {
@@ -19,14 +20,23 @@ class NotificationIconHook : IXposedHookLoadPackage {
     }
 
     override fun handleLoadPackage(lpparam: XC_LoadPackage.LoadPackageParam) {
-        if (lpparam.packageName != SYSTEMUI) return
+        log("handleLoadPackage called for: ${lpparam.packageName}")
+
+        if (lpparam.packageName != SYSTEMUI) {
+            log("Skipping non-SystemUI package: ${lpparam.packageName}")
+            return
+        }
+
+        log("SystemUI package detected. Initializing hooks...")
 
         try {
             StatusbarAppIconHook.hook(lpparam)
-            log("StatusbarAppIconHook initialized")
+            log("StatusbarAppIconHook.hook() completed successfully")
         } catch (t: Throwable) {
-            log("Failed to initialize hooks in SystemUI")
+            log("FATAL: StatusbarAppIconHook.hook() threw an exception")
             log(t)
         }
+
+        log("NotificationIconHook initialization finished")
     }
 }
