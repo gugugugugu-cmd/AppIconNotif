@@ -17,6 +17,9 @@ import de.robv.android.xposed.callbacks.XC_LoadPackage
 /**
  * Android 16 (API 36) 适配版
  * 多版本兼容的 StatusBar 通知图标 Hook
+ *
+ * FIX: 修复了 lambda 中错误使用 return@label 导致的类型推断失败
+ * FIX: 修复了 readFieldSafe 的访问权限问题
  */
 object StatusbarAppIconHook {
 
@@ -34,12 +37,6 @@ object StatusbarAppIconHook {
 
         // ---------- 类查找（多路径回退） ----------
 
-        /**
-         * 查找 StatusBarIconView：尝试多个可能的包路径
-         * A12-A15: com.android.systemui.statusbar.StatusBarIconView
-         * A16+:     com.android.systemui.statusbar.views.StatusBarIconView (可能)
-         *           com.android.systemui.statusbar.notification.icon.StatusBarIconView (可能)
-         */
         fun findStatusBarIconView(classLoader: ClassLoader): Class<*>? {
             val candidates = listOf(
                 "$SYSTEMUI.statusbar.StatusBarIconView",
@@ -54,14 +51,10 @@ object StatusbarAppIconHook {
                     return clz
                 } catch (_: Throwable) { }
             }
-            log("[Compat] FAILED to find StatusBarIconView in any known path")
+            log("[Compat] FAILED to find StatusBarIconView")
             return null
         }
 
-        /**
-         * 查找 NotificationIconContainer（A12-A14）或替代类
-         * A16 可能完全重组为 NotificationShelf / NotificationIconAreaController
-         */
         fun findNotificationContainer(classLoader: ClassLoader): Class<*>? {
             val candidates = listOf(
                 "$SYSTEMUI.statusbar.phone.NotificationIconContainer",
@@ -77,17 +70,11 @@ object StatusbarAppIconHook {
                     return clz
                 } catch (_: Throwable) { }
             }
-            log("[Compat] No notification container class found")
             return null
         }
 
-        /**
-         * 查找 IconState 或其替代品
-         */
         fun findIconState(classLoader: ClassLoader, containerClass: Class<*>?): Class<*>? {
             val candidates = mutableListOf<String>()
-
-            // 从容器类名推导可能的 IconState 路径
             if (containerClass != null) {
                 candidates.add("${containerClass.name}\$IconState")
                 candidates.add("${containerClass.name}\$IconConfig")
@@ -102,18 +89,11 @@ object StatusbarAppIconHook {
                     return clz
                 } catch (_: Throwable) { }
             }
-            log("[Compat] No IconState class found")
             return null
         }
 
         // ---------- 方法查找（多签名/多名称回退） ----------
 
-        /**
-         * 尝试 hook getIcon(StatusBarIcon) 方法
-         * A12 签名: getIcon(StatusBarIcon) → Drawable
-         * A13+ 签名: getIcon(StatusBarIcon, Context) → Drawable
-         * A16: 可能已移除，用 getStatusBarIconDrawable() 代替
-         */
         fun hookGetIcon(
             clazz: Class<*>,
             classLoader: ClassLoader,
@@ -129,13 +109,12 @@ object StatusbarAppIconHook {
                 }
             }
 
-            // 尝试多个可能的 StatusBarIcon 类型
+            // 尝试多个可能的 StatusBarIcon 类型签名
             val iconTypes = listOf(
                 "com.android.internal.statusbar.StatusBarIcon",
                 "$SYSTEMUI.statusbar.StatusBarIcon",
                 "android.app.Notification"
             )
-
             for (iconType in iconTypes) {
                 try {
                     val iconClass = XposedHelpers.findClass(iconType, classLoader)
@@ -145,7 +124,7 @@ object StatusbarAppIconHook {
                 } catch (_: Throwable) { }
             }
 
-            // A16 可能的替代方法：getStatusBarIconDrawable()
+            // A16 可能的替代方法
             try {
                 XposedHelpers.findAndHookMethod(clazz, "getStatusBarIconDrawable", hook)
                 log("[Compat] Hooked getStatusBarIconDrawable()")
@@ -162,12 +141,6 @@ object StatusbarAppIconHook {
             return false
         }
 
-        /**
-         * hook updateIconColor 的替代方案
-         * A12: updateIconColor(int tintColor)
-         * A13: setColorWithDebug(int color, String debug)
-         * A14+: 着色转移到 StatusBarIconDrawable.setTintList()
-         */
         fun hookIconTintHandlers(
             clazz: Class<*>,
             before: ((XC_MethodHook.MethodHookParam) -> Unit)?,
@@ -187,7 +160,7 @@ object StatusbarAppIconHook {
                 "updateIconColor" to emptyArray(),
                 "setColorWithDebug" to arrayOf(Int::class.javaPrimitiveType, String::class.java),
                 "onTintChanged" to emptyArray(),
-                "setTintList" to arrayOf(Int::class.javaPrimitiveType)  // A16 可能
+                "setTintList" to arrayOf(Int::class.javaPrimitiveType)
             )
 
             for ((name, args) in methodsToTry) {
@@ -197,14 +170,10 @@ object StatusbarAppIconHook {
                     return true
                 } catch (_: Throwable) { }
             }
-
             log("[Compat] No tint handler hook available")
             return false
         }
 
-        /**
-         * hook applyIconStates 或替代方法
-         */
         fun hookIconStateApplication(
             clazz: Class<*>,
             after: ((XC_MethodHook.MethodHookParam) -> Unit)?
@@ -231,7 +200,7 @@ object StatusbarAppIconHook {
                 } catch (_: Throwable) { }
             }
 
-            // A14+: NotificationIconAreaController.updateIconsForLayout()
+            // A14+: NotificationIconAreaController.updateIconsForLayout(FrameLayout)
             try {
                 XposedHelpers.findAndHookMethod(
                     clazz, "updateIconsForLayout",
@@ -246,10 +215,10 @@ object StatusbarAppIconHook {
             return false
         }
 
-        // ---------- 字段访问（安全包装） ----------
+        // ---------- 字段访问（安全包装）----------
 
         /**
-         * 安全读取字段，尝试多个字段名
+         * 公开方法：从 View 获取包名
          */
         fun getPkgName(view: View): String? {
             // 方法1: 通过 mIcon 字段
@@ -259,7 +228,7 @@ object StatusbarAppIconHook {
                 if (pkg is String) return pkg
             }
 
-            // 方法2: 通过 mNotificationData/包名
+            // 方法2: 通过 mNotificationData
             val notificationData = readFieldSafe(view, "mNotificationData", "mEntry")
             if (notificationData != null) {
                 val sbn = readFieldSafe(notificationData, "mSbn", "mStatusBarNotification")
@@ -269,7 +238,7 @@ object StatusbarAppIconHook {
                 }
             }
 
-            // 方法3: 通过反射解析 IconDrawable 内部信息
+            // 方法3: 通过 IconDrawable
             val drawable = readFieldSafe(view, "mIconDrawable", "mDrawable")
             if (drawable != null) {
                 val icon = readFieldSafe(drawable, "mIcon", "mStatusBarIcon")
@@ -282,7 +251,10 @@ object StatusbarAppIconHook {
             return null
         }
 
-        private fun readFieldSafe(obj: Any, vararg fieldNames: String): Any? {
+        /**
+         * 公开方法：安全读取字段（供外部调用）
+         */
+        fun readFieldSafe(obj: Any, vararg fieldNames: String): Any? {
             for (name in fieldNames) {
                 try {
                     return XposedHelpers.getObjectField(obj, name)
@@ -292,7 +264,7 @@ object StatusbarAppIconHook {
         }
 
         /**
-         * 清除着色 — 多版本兼容
+         * 清除着色
          */
         fun clearTint(imageView: ImageView) {
             try {
@@ -305,18 +277,16 @@ object StatusbarAppIconHook {
                     imageView.imageTintBlendMode = null
                 }
 
-                // 尝试清除内部着色字段（多种可能名称）
+                // 清除内部着色字段
                 val tintFields = listOf(
                     "mCurrentSetColor", "mDrawableColor",
                     "mTintColor", "mIconColor", "mCurrentColor"
                 )
                 for (field in tintFields) {
-                    try {
-                        XposedHelpers.setIntField(imageView, field, 0)
-                    } catch (_: Throwable) { }
+                    try { XposedHelpers.setIntField(imageView, field, 0) } catch (_: Throwable) { }
                 }
 
-                // 如果是 StatusBarIconDrawable，清除其着色
+                // 清除 Drawable 的着色
                 val drawable = imageView.drawable
                 if (drawable != null) {
                     try {
@@ -327,7 +297,6 @@ object StatusbarAppIconHook {
                         }
                     } catch (_: Throwable) { }
 
-                    // 尝试通过反射清除内部 StateList 着色
                     try {
                         XposedHelpers.callMethod(drawable, "setTintList", null as Any?)
                     } catch (_: Throwable) { }
@@ -346,11 +315,9 @@ object StatusbarAppIconHook {
 
         val classLoader = lpparam.classLoader
 
-        // 1. 查找核心类
         val statusBarIconViewClass = CompatV5.findStatusBarIconView(classLoader)
         if (statusBarIconViewClass == null) {
-            log("[FATAL] Cannot find StatusBarIconView, aborting")
-            // 尝试兜底方案: hook 所有 ImageView 在 SystemUI 中的 onDraw
+            log("[FATAL] Cannot find StatusBarIconView, using fallback")
             installFallbackHook(lpparam)
             return
         }
@@ -358,7 +325,6 @@ object StatusbarAppIconHook {
         val containerClass = CompatV5.findNotificationContainer(classLoader)
         val iconStateClass = CompatV5.findIconState(classLoader, containerClass)
 
-        // 2. 安装各种 hook
         installGetIconHook(statusBarIconViewClass, classLoader)
         installTintHandlerHook(statusBarIconViewClass)
         installLayoutHook(statusBarIconViewClass)
@@ -366,41 +332,44 @@ object StatusbarAppIconHook {
         if (containerClass != null) {
             installIconStateApplicationHook(containerClass)
         } else {
-            log("[INFO] No container class found; state application hook skipped")
+            log("[INFO] No container class found")
         }
 
         if (iconStateClass != null) {
             installIconStateHooks(iconStateClass)
         }
 
-        // 3. A16+ 新增 hook 点
         installA16SpecificHooks(classLoader)
-
-        log("=== StatusbarAppIconHook.hook() completed ===")
+        log("=== hook() completed ===")
     }
 
     // ===================================================================
-    //  Hook 安装方法
+    //  Hook 安装 — 修复：lambda 中不再使用 return@label
     // ===================================================================
 
     /**
      * Hook 1: 替换图标 Drawable
-     * 替换策略：在 getIcon 返回后拦截，替换为应用原始图标
+     *
+     * 修复要点：lambda 中不可使用 return@hookGetIcon，
+     * 改为 if-else 链避免早期返回
      */
     private fun installGetIconHook(clazz: Class<*>, classLoader: ClassLoader) {
         log("--- Installing getIcon hook ---")
 
         val hooked = CompatV5.hookGetIcon(clazz, classLoader,
             before = { param ->
+                // FIX: 去掉所有 return@label，改用 if-else
                 try {
-                    val view = param.thisObject as? View ?: return@hookGetIcon
-                    val pkgName = CompatV5.getPkgName(view) ?: return@hookGetIcon
-                    if (!shouldHandlePackage(view.context, pkgName)) return@hookGetIcon
-
-                    val appIcon = getApplicationIcon(view.context, pkgName)
-                    if (appIcon != null) {
-                        log("[getIcon.before] Replacing icon for $pkgName")
-                        param.result = appIcon
+                    val view = param.thisObject as? View
+                    if (view != null) {
+                        val pkgName = CompatV5.getPkgName(view)
+                        if (pkgName != null && shouldHandlePackage(view.context, pkgName)) {
+                            val appIcon = getApplicationIcon(view.context, pkgName)
+                            if (appIcon != null) {
+                                log("[getIcon.before] Replacing icon for $pkgName")
+                                param.result = appIcon
+                            }
+                        }
                     }
                 } catch (t: Throwable) {
                     log("[getIcon.before] Error: ${t.message}")
@@ -423,21 +392,24 @@ object StatusbarAppIconHook {
     }
 
     /**
-     * Hook 2: 阻止着色 — 使用版本兼容的方法
+     * Hook 2: 阻止着色
      */
     private fun installTintHandlerHook(clazz: Class<*>) {
         log("--- Installing tint handler hook ---")
 
         val hooked = CompatV5.hookIconTintHandlers(clazz,
             before = { param ->
+                // FIX: 去掉 return@label
                 try {
-                    val view = param.thisObject as? View ?: return@hookIconTintHandlers
-                    val pkgName = CompatV5.getPkgName(view) ?: return@hookIconTintHandlers
-                    if (!shouldHandlePackage(view.context, pkgName)) return@hookIconTintHandlers
-
-                    log("[tint.before] Blocking tint for $pkgName")
-                    if (view is ImageView) CompatV5.clearTint(view)
-                    param.result = null
+                    val view = param.thisObject as? View
+                    if (view != null) {
+                        val pkgName = CompatV5.getPkgName(view)
+                        if (pkgName != null && shouldHandlePackage(view.context, pkgName)) {
+                            log("[tint.before] Blocking tint for $pkgName")
+                            if (view is ImageView) CompatV5.clearTint(view)
+                            param.result = null
+                        }
+                    }
                 } catch (t: Throwable) {
                     log("[tint.before] Error: ${t.message}")
                 }
@@ -453,7 +425,7 @@ object StatusbarAppIconHook {
         )
 
         if (hooked) log("[OK] Tint handler hook installed")
-        else log("[WARN] No tint handler hooked, using onDraw fallback")
+        else log("[WARN] No tint handler hooked")
     }
 
     /**
@@ -491,7 +463,7 @@ object StatusbarAppIconHook {
     }
 
     /**
-     * Hook 4: IconState 应用方法
+     * Hook 4: IconState 方法
      */
     private fun installIconStateHooks(iconStateClass: Class<*>) {
         log("--- Installing IconState hooks ---")
@@ -522,20 +494,19 @@ object StatusbarAppIconHook {
             } catch (_: Throwable) { }
         }
 
-        if (!anyHooked) {
-            log("[WARN] No IconState methods hooked")
-        }
+        if (!anyHooked) log("[WARN] No IconState methods hooked")
     }
 
     /**
      * Hook 5: 图标状态应用（容器级别）
      */
     private fun installIconStateApplicationHook(containerClass: Class<*>) {
-        log("--- Installing icon state application hook ---")
+        log("--- Installing state application hook ---")
 
         val hooked = CompatV5.hookIconStateApplication(containerClass) { param ->
             try {
-                processContainerViews(param.thisObject ?: return@hookIconStateApplication)
+                val container = param.thisObject ?: return@hookIconStateApplication
+                processContainerViews(container)
             } catch (t: Throwable) {
                 log("[stateApp] Error: ${t.message}")
             }
@@ -551,7 +522,7 @@ object StatusbarAppIconHook {
     private fun installA16SpecificHooks(classLoader: ClassLoader) {
         log("--- Installing A16+ specific hooks ---")
 
-        // A16+ 新增: StatusBarIconDrawable.setIconTint()
+        // A16+: StatusBarIconDrawable.setIconTint()
         try {
             val drawableClass = XposedHelpers.findClass(
                 "$SYSTEMUI.statusbar.notification.icon.StatusBarIconDrawable",
@@ -563,7 +534,6 @@ object StatusbarAppIconHook {
                 Int::class.javaPrimitiveType,
                 object : XC_MethodHook() {
                     override fun beforeHookedMethod(param: MethodHookParam) {
-                        // 阻止着色
                         param.result = null
                     }
                 }
@@ -573,7 +543,7 @@ object StatusbarAppIconHook {
             log("[INFO] StatusBarIconDrawable.setIconTint() not found")
         }
 
-        // A16+ 新增: NotificationIconAreaController.updateIconViews()
+        // A16+: NotificationIconAreaController.updateIconViews()
         try {
             val controllerClass = XposedHelpers.findClass(
                 "$SYSTEMUI.statusbar.notification.icon.NotificationIconAreaController",
@@ -586,9 +556,11 @@ object StatusbarAppIconHook {
                     override fun afterHookedMethod(param: MethodHookParam) {
                         try {
                             val thisObj = param.thisObject
-                            val iconViews = XposedHelpers.getObjectField(thisObj, "mIconViews") as? List<*>
-                            iconViews?.forEach { view ->
-                                if (view is View) applyUniformStyle(view)
+                            val iconViews = CompatV5.readFieldSafe(
+                                thisObj, "mIconViews", "mStatusIcons", "mNotificationIcons"
+                            ) as? List<*>
+                            iconViews?.forEach { v ->
+                                if (v is View) applyUniformStyle(v)
                             }
                         } catch (t: Throwable) {
                             log("[updateIconViews] Error: ${t.message}")
@@ -601,7 +573,7 @@ object StatusbarAppIconHook {
             log("[INFO] NotificationIconAreaController.updateIconViews() not found")
         }
 
-        // A16+ 兜底: hook View.onDraw 监听所有 ImageView
+        // 兜底: View.onDraw()
         try {
             XposedHelpers.findAndHookMethod(
                 View::class.java,
@@ -629,12 +601,12 @@ object StatusbarAppIconHook {
     }
 
     /**
-     * 最终兜底方案：当 StatusBarIconView 找不到时使用
+     * 兜底方案
      */
     private fun installFallbackHook(lpparam: XC_LoadPackage.LoadPackageParam) {
-        log("--- Installing fallback hooks (no StatusBarIconView) ---")
+        log("--- Installing fallback hooks ---")
 
-        // 方案1: hook NotificationIconAreaController
+        // 方案1: NotificationIconAreaController
         try {
             val controllerClass = XposedHelpers.findClass(
                 "$SYSTEMUI.statusbar.phone.NotificationIconAreaController",
@@ -664,8 +636,7 @@ object StatusbarAppIconHook {
             log("[FALLBACK] NotificationIconAreaController not found")
         }
 
-        // 方案2: hook 所有 SystemUI 子视图中的 ImageView（性能较差但兜底）
-        log("[FALLBACK] Using timer-based polling as last resort")
+        log("[FALLBACK] Fallback hooks installed")
     }
 
     // ===================================================================
@@ -683,7 +654,7 @@ object StatusbarAppIconHook {
 
         if (!shouldHandlePackage(view.context, pkgName)) return
 
-        // 1. 强制设置应用原始图标
+        // 1. 设置应用原始图标
         val appIcon = getApplicationIcon(view.context, pkgName)
         if (appIcon != null) {
             if (view.drawable !== appIcon) {
@@ -715,7 +686,7 @@ object StatusbarAppIconHook {
         }
         setLayoutSize()
 
-        // 3. 设置圆形裁剪
+        // 3. 圆形裁剪
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.LOLLIPOP) {
             view.outlineProvider = object : ViewOutlineProvider() {
                 override fun getOutline(view: View, outline: Outline) {
@@ -736,7 +707,7 @@ object StatusbarAppIconHook {
             log("[applyUniformStyle] Round clip set for $pkgName")
         }
 
-        // 4. 清除所有干扰属性
+        // 4. 清除干扰属性
         CompatV5.clearTint(view)
         view.setPadding(0, 0, 0, 0)
         view.background = null
@@ -752,7 +723,7 @@ object StatusbarAppIconHook {
      */
     private fun processContainerViews(container: Any) {
         try {
-            // 方式1: 通过 mIconStates
+            // 方式1: 通过 mIconStates Map
             val iconStates = CompatV5.readFieldSafe(
                 container,
                 "mIconStates", "mViewStates", "mStates"
@@ -764,7 +735,7 @@ object StatusbarAppIconHook {
                 return
             }
 
-            // 方式2: 通过 mIconViews / mChildViews
+            // 方式2: 通过 mIconViews 列表
             val iconViews = CompatV5.readFieldSafe(
                 container,
                 "mIconViews", "mChildViews", "mViews", "mNotificationViews"
@@ -776,7 +747,7 @@ object StatusbarAppIconHook {
                 return
             }
 
-            // 方式3: 如果 container 本身是 ViewGroup
+            // 方式3: ViewGroup 遍历
             if (container is android.view.ViewGroup) {
                 for (i in 0 until container.childCount) {
                     applyUniformStyle(container.getChildAt(i))
