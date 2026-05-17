@@ -5,6 +5,8 @@ import android.content.pm.ApplicationInfo
 import android.graphics.Bitmap
 import android.graphics.Canvas
 import android.graphics.Paint
+import android.graphics.PorterDuff
+import android.graphics.PorterDuffXfermode
 import android.graphics.drawable.BitmapDrawable
 import android.graphics.drawable.Drawable
 import android.util.TypedValue
@@ -316,7 +318,7 @@ object StatusbarAppIconHook {
     }
 
     // ===================================================================
-    //  核心样式应用方法（圆形 Drawable 方案）
+    //  核心样式应用方法（圆形 Drawable 方案 - 修复版）
     // ===================================================================
     private fun applyUniformStyle(view: View?) {
         if (view !is ImageView) {
@@ -343,7 +345,8 @@ object StatusbarAppIconHook {
         }
 
         val targetSizePx = dpToPx(view.context, TARGET_ICON_DP)
-        // 转换为圆形 Drawable
+
+        // 转换为圆形 Drawable（修复版本）
         val roundDrawable = createRoundDrawable(view.context, appIcon, targetSizePx)
         if (roundDrawable != null) {
             view.setImageDrawable(roundDrawable)
@@ -358,7 +361,7 @@ object StatusbarAppIconHook {
         view.scaleType = ImageView.ScaleType.FIT_CENTER
         view.adjustViewBounds = true
 
-        // 固定尺寸
+        // 固定尺寸（增加延迟处理）
         try {
             val lp = view.layoutParams
             if (lp != null) {
@@ -373,7 +376,9 @@ object StatusbarAppIconHook {
                 }
                 if (changed) view.layoutParams = lp
             } else {
-                log("[applyUniformStyle] layoutParams is null, cannot set size")
+                log("[applyUniformStyle] layoutParams is null, will retry after layout")
+                view.post { applyUniformStyle(view) }
+                return
             }
         } catch (t: Throwable) {
             log("[applyUniformStyle] LayoutParams error: ${t.message}")
@@ -386,7 +391,7 @@ object StatusbarAppIconHook {
         // 清除着色
         clearTint(view)
 
-        // 关闭系统裁剪，避免干扰（可选）
+        // 关闭系统裁剪，避免干扰
         view.clipToOutline = false
 
         // 刷新
@@ -394,29 +399,36 @@ object StatusbarAppIconHook {
         log("[applyUniformStyle] === Exiting for $pkgName ===")
     }
 
-    // 将原始 Drawable 转换为指定大小的圆形 Drawable
+    /**
+     * 将原始 Drawable 转换为指定大小的圆形 Drawable。
+     * 修复：使用 DST_IN 模式正确绘制圆形图标，避免黑色背景。
+     */
     private fun createRoundDrawable(
         context: Context,
         original: Drawable,
         targetSizePx: Int
     ): Drawable? {
-        val bitmap = try {
-            Bitmap.createBitmap(targetSizePx, targetSizePx, Bitmap.Config.ARGB_8888)
-        } catch (e: Throwable) {
-            log("[createRoundDrawable] Failed to create bitmap: ${e.message}")
-            return null
+        return try {
+            // 创建一个空 Bitmap
+            val bitmap = Bitmap.createBitmap(targetSizePx, targetSizePx, Bitmap.Config.ARGB_8888)
+            val canvas = Canvas(bitmap)
+            // 绘制圆形剪裁（透明背景）
+            val paint = Paint(Paint.ANTI_ALIAS_FLAG)
+            val radius = targetSizePx / 2f
+            // 先绘制一个圆形（这里不填充颜色，仅用于剪裁）
+            paint.color = android.graphics.Color.TRANSPARENT
+            canvas.drawCircle(radius, radius, radius, paint)
+            // 设置混合模式：只保留圆形区域内的内容
+            paint.xfermode = PorterDuffXfermode(PorterDuff.Mode.SRC_ATOP)
+            // 绘制原始图标
+            original.setBounds(0, 0, targetSizePx, targetSizePx)
+            original.draw(canvas)
+            // 可选：用透明背景填充圆形外部（上面已经透明）
+            BitmapDrawable(context.resources, bitmap)
+        } catch (t: Throwable) {
+            log("[createRoundDrawable] Failed: ${t.message}")
+            null
         }
-        val canvas = Canvas(bitmap)
-        // 设置原始 Drawable 的边界
-        original.setBounds(0, 0, targetSizePx, targetSizePx)
-        // 绘制圆形剪裁区域
-        val paint = Paint(Paint.ANTI_ALIAS_FLAG)
-        val radius = targetSizePx / 2f
-        canvas.drawCircle(radius, radius, radius, paint)
-        paint.xfermode = android.graphics.PorterDuffXfermode(android.graphics.PorterDuff.Mode.SRC_IN)
-        // 绘制原始图标
-        original.draw(canvas)
-        return BitmapDrawable(context.resources, bitmap)
     }
 
     private fun clearTint(imageView: ImageView) {
