@@ -17,19 +17,10 @@ class NotificationIconHook : IXposedHookLoadPackage {
 
     companion object {
         private const val SYSTEMUI = "com.android.systemui"
-
-        private fun log(msg: String) {
-            XposedBridge.log("AppIconNotif: $msg")
-        }
-
-        private fun log(t: Throwable) {
-            XposedBridge.log(t)
-        }
     }
 
     override fun handleLoadPackage(lpparam: XC_LoadPackage.LoadPackageParam) {
         if (lpparam.packageName != SYSTEMUI) return
-
         hookNotificationHeaderViewWrapper(lpparam)
         StatusbarAppIconHook.hook(lpparam)
     }
@@ -40,16 +31,13 @@ class NotificationIconHook : IXposedHookLoadPackage {
                 "$SYSTEMUI.statusbar.notification.row.wrapper.NotificationHeaderViewWrapper",
                 lpparam.classLoader
             )
-
             val rowClass = XposedHelpers.findClass(
                 "$SYSTEMUI.statusbar.notification.row.ExpandableNotificationRow",
                 lpparam.classLoader
             )
 
             XposedHelpers.findAndHookMethod(
-                wrapperClass,
-                "onContentUpdated",
-                rowClass,
+                wrapperClass, "onContentUpdated", rowClass,
                 object : XC_MethodHook() {
                     override fun afterHookedMethod(param: MethodHookParam) {
                         try {
@@ -71,10 +59,8 @@ class NotificationIconHook : IXposedHookLoadPackage {
                                 XposedHelpers.getObjectField(entry, "mSbn")
                             }
 
-                            val notification =
-                                XposedHelpers.callMethod(sbn, "getNotification") as Notification
-                            val pkgName =
-                                XposedHelpers.callMethod(sbn, "getPackageName") as? String ?: return
+                            val notification = XposedHelpers.callMethod(sbn, "getNotification") as Notification
+                            val pkgName = XposedHelpers.callMethod(sbn, "getPackageName") as? String ?: return
 
                             val iconView = try {
                                 XposedHelpers.getObjectField(param.thisObject, "mIcon") as ImageView
@@ -91,9 +77,7 @@ class NotificationIconHook : IXposedHookLoadPackage {
                             }
 
                             val imageIconTagId = iconView.context.resources.getIdentifier(
-                                "image_icon_tag",
-                                "id",
-                                SYSTEMUI
+                                "image_icon_tag", "id", SYSTEMUI
                             )
 
                             applyOriginalAppIcon(iconView, appIcon)
@@ -104,11 +88,7 @@ class NotificationIconHook : IXposedHookLoadPackage {
 
                             try {
                                 val workProfileImage =
-                                    XposedHelpers.getObjectField(
-                                        param.thisObject,
-                                        "mWorkProfileImage"
-                                    ) as? ImageView
-
+                                    XposedHelpers.getObjectField(param.thisObject, "mWorkProfileImage") as? ImageView
                                 if (workProfileImage != null) {
                                     workProfileImage.setImageIcon(notification.smallIcon)
                                     if (imageIconTagId != 0) {
@@ -117,22 +97,16 @@ class NotificationIconHook : IXposedHookLoadPackage {
                                 }
                             } catch (_: Throwable) {
                             }
-                        } catch (t: Throwable) {
-                            log(t)
+                        } catch (_: Throwable) {
                         }
                     }
                 }
             )
-        } catch (t: Throwable) {
-            log("Failed to hook NotificationHeaderViewWrapper")
-            log(t)
+        } catch (_: Throwable) {
         }
     }
 
-    private fun applyOriginalAppIcon(
-        imageView: ImageView,
-        drawable: android.graphics.drawable.Drawable
-    ) {
+    private fun applyOriginalAppIcon(imageView: ImageView, drawable: android.graphics.drawable.Drawable) {
         clearIconStyling(imageView)
 
         try {
@@ -192,8 +166,7 @@ class NotificationIconHook : IXposedHookLoadPackage {
         return try {
             val appInfo = context.packageManager.getApplicationInfo(pkgName, 0)
             val isSystemApp = (appInfo.flags and ApplicationInfo.FLAG_SYSTEM) != 0
-            val isUpdatedSystemApp =
-                (appInfo.flags and ApplicationInfo.FLAG_UPDATED_SYSTEM_APP) != 0
+            val isUpdatedSystemApp = (appInfo.flags and ApplicationInfo.FLAG_UPDATED_SYSTEM_APP) != 0
             !isSystemApp && !isUpdatedSystemApp
         } catch (_: Throwable) {
             false
