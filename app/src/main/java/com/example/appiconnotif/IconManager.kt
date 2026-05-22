@@ -18,14 +18,14 @@ object IconManager {
     fun isThirdPartyApp(context: Context, pkgName: String): Boolean {
         thirdPartyAppCache[pkgName]?.let { return it }
         return try {
-            [span_9](start_span)[span_10](start_span)val appInfo = context.packageManager.getApplicationInfo(pkgName, 0)[span_9](end_span)[span_10](end_span)
-            [span_11](start_span)[span_12](start_span)val isSystemApp = (appInfo.flags and ApplicationInfo.FLAG_SYSTEM) != 0[span_11](end_span)[span_12](end_span)
-            [span_13](start_span)[span_14](start_span)val isUpdatedSystemApp = (appInfo.flags and ApplicationInfo.FLAG_UPDATED_SYSTEM_APP) != 0[span_13](end_span)[span_14](end_span)
-            [span_15](start_span)[span_16](start_span)val result = !isSystemApp && !isUpdatedSystemApp[span_15](end_span)[span_16](end_span)
+            val appInfo = context.packageManager.getApplicationInfo(pkgName, 0)
+            val isSystemApp = (appInfo.flags and ApplicationInfo.FLAG_SYSTEM) != 0
+            val isUpdatedSystemApp = (appInfo.flags and ApplicationInfo.FLAG_UPDATED_SYSTEM_APP) != 0
+            val result = !isSystemApp && !isUpdatedSystemApp
             thirdPartyAppCache[pkgName] = result
             result
         } catch (_: Throwable) {
-            [span_17](start_span)[span_18](start_span)false[span_17](end_span)[span_18](end_span)
+            false
         }
     }
 
