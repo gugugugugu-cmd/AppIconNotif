@@ -1,12 +1,8 @@
 package com.example.appiconnotif
 
 import android.content.Context
-import android.graphics.Outline
+import android.content.pm.ApplicationInfo
 import android.graphics.drawable.Drawable
-import android.util.TypedValue
-import android.view.View
-import android.view.ViewOutlineProvider
-import android.widget.ImageView
 import de.robv.android.xposed.XC_MethodHook
 import de.robv.android.xposed.XposedHelpers
 import de.robv.android.xposed.callbacks.XC_LoadPackage
@@ -17,156 +13,31 @@ object StatusbarAppIconHook {
 
     fun hook(lpparam: XC_LoadPackage.LoadPackageParam) {
         try {
-            val notificationIconContainerClass = XposedHelpers.findClass(
-                "$SYSTEMUI.statusbar.phone.NotificationIconContainer",
-                lpparam.classLoader
-            )
-            val iconStateClass = XposedHelpers.findClass(
-                "$SYSTEMUI.statusbar.phone.NotificationIconContainer\$IconState",
-                lpparam.classLoader
-            )
             val statusBarIconViewClass = XposedHelpers.findClass(
                 "$SYSTEMUI.statusbar.StatusBarIconView",
                 lpparam.classLoader
             )
-
-            hookApplyIconStates(notificationIconContainerClass)
-            hookIconState(iconStateClass)
-            hookUpdateIconColor(statusBarIconViewClass)
-            hookGetIcon(statusBarIconViewClass, lpparam)
-            hookOnLayout(statusBarIconViewClass)
-        } catch (_: Throwable) {
-        }
-    }
-
-    private fun hookApplyIconStates(notificationIconContainerClass: Class<*>) {
-        try {
-            XposedHelpers.findAndHookMethod(
-                notificationIconContainerClass, "applyIconStates",
-                object : XC_MethodHook() {
-                    @Suppress("UNCHECKED_CAST")
-                    override fun afterHookedMethod(param: MethodHookParam) {
-                        try {
-                            val iconStates =
-                                XposedHelpers.getObjectField(param.thisObject, "mIconStates")
-                                        as? HashMap<View, Any> ?: return
-                            for (icon in iconStates.keys) {
-                                removeTintForStatusbarIcon(icon, false)
-                                applyCircularStyleToIconView(icon)
-                            }
-                        } catch (_: Throwable) {
-                        }
-                    }
-                }
-            )
-        } catch (_: Throwable) {
-        }
-    }
-
-    private fun hookIconState(iconStateClass: Class<*>) {
-        val hook = object : XC_MethodHook() {
-            override fun afterHookedMethod(param: MethodHookParam) {
-                try {
-                    val icon = param.args[0] as? View ?: return
-                    val isNotification = try {
-                        XposedHelpers.getObjectField(icon, "mNotification") != null
-                    } catch (_: Throwable) {
-                        false
-                    }
-                    removeTintForStatusbarIcon(icon, isNotification)
-                    applyCircularStyleToIconView(icon)
-                } catch (_: Throwable) {
-                }
-            }
-        }
-        try {
-            XposedHelpers.findAndHookMethod(iconStateClass, "initFrom", View::class.java, hook)
-            XposedHelpers.findAndHookMethod(iconStateClass, "applyToView", View::class.java, hook)
-        } catch (_: Throwable) {
-        }
-    }
-
-    private fun hookUpdateIconColor(statusBarIconViewClass: Class<*>) {
-        try {
-            XposedHelpers.findAndHookMethod(
-                statusBarIconViewClass, "updateIconColor",
-                object : XC_MethodHook() {
-                    override fun beforeHookedMethod(param: MethodHookParam) {
-                        try {
-                            val thisObj = param.thisObject
-                            val isNotification = try {
-                                XposedHelpers.getObjectField(thisObj, "mNotification") != null
-                            } catch (_: Throwable) {
-                                false
-                            }
-                            if (!isNotification) return
-
-                            val statusBarIcon = try {
-                                XposedHelpers.getObjectField(thisObj, "mIcon")
-                            } catch (_: Throwable) {
-                                null
-                            } ?: return
-
-                            val pkgName = try {
-                                XposedHelpers.getObjectField(statusBarIcon, "pkg") as? String
-                            } catch (_: Throwable) {
-                                null
-                            } ?: return
-
-                            val context = try {
-                                XposedHelpers.getObjectField(thisObj, "mContext") as Context
-                            } catch (_: Throwable) {
-                                null
-                            } ?: return
-
-                            if (isThirdPartyApp(context, pkgName)) {
-                                param.result = null
-                                applyCircularStyleToIconView(thisObj as? View)
-                            }
-                        } catch (_: Throwable) {
-                        }
-                    }
-                }
-            )
-        } catch (_: Throwable) {
-        }
-    }
-
-    private fun hookGetIcon(
-        statusBarIconViewClass: Class<*>,
-        lpparam: XC_LoadPackage.LoadPackageParam
-    ) {
-        try {
             val statusBarIconClass = XposedHelpers.findClass(
-                "com.android.internal.statusbar.StatusBarIcon", lpparam.classLoader
+                "com.android.internal.statusbar.StatusBarIcon",
+                lpparam.classLoader
             )
+
             XposedHelpers.findAndHookMethod(
-                statusBarIconViewClass, "getIcon", statusBarIconClass,
+                statusBarIconViewClass,
+                "getIcon",
+                statusBarIconClass,
                 object : XC_MethodHook() {
                     override fun beforeHookedMethod(param: MethodHookParam) {
                         try {
                             val thisObj = param.thisObject
-                            val statusBarIcon = param.args[0]
-                            val sysuiContext = try {
-                                XposedHelpers.getObjectField(thisObj, "mContext") as Context
-                            } catch (_: Throwable) {
-                                return
-                            }
-                            val sbn = try {
-                                XposedHelpers.getObjectField(thisObj, "mNotification")
-                            } catch (_: Throwable) {
-                                null
-                            }
-                            var appContext: Context? = null
-                            if (sbn != null) {
-                                appContext = try {
-                                    XposedHelpers.callMethod(sbn, "getPackageContext", sysuiContext) as? Context
-                                } catch (_: Throwable) {
-                                    null
-                                }
-                            }
-                            if (appContext == null) appContext = sysuiContext
-                            setNotificationIcon(statusBarIcon, appContext, param)
+                            val context = XposedHelpers.getObjectField(thisObj, "mContext") as? Context ?: return
+                            val icon = param.args[0] ?: return
+                            val pkg = XposedHelpers.getObjectField(icon, "pkg") as? String ?: return
+
+                            if (!isThirdPartyApp(context, pkg)) return
+
+                            val drawable: Drawable = context.packageManager.getApplicationIcon(pkg)
+                            param.result = drawable
                         } catch (_: Throwable) {
                         }
                     }
@@ -174,125 +45,13 @@ object StatusbarAppIconHook {
             )
         } catch (_: Throwable) {
         }
-    }
-
-    private fun hookOnLayout(statusBarIconViewClass: Class<*>) {
-        try {
-            XposedHelpers.findAndHookMethod(
-                statusBarIconViewClass, "onLayout",
-                Boolean::class.java, Int::class.java, Int::class.java, Int::class.java, Int::class.java,
-                object : XC_MethodHook() {
-                    override fun afterHookedMethod(param: MethodHookParam) {
-                        applyCircularStyleToIconView(param.thisObject as? View)
-                    }
-                }
-            )
-        } catch (_: Throwable) {
-        }
-    }
-
-    private fun removeTintForStatusbarIcon(icon: View, isNotification: Boolean) {
-        try {
-            val statusBarIcon = XposedHelpers.getObjectField(icon, "mIcon")
-            val pkgName = XposedHelpers.getObjectField(statusBarIcon, "pkg") as? String ?: return
-            val context = (icon as? ImageView)?.context ?: return
-
-            if (isNotification && isThirdPartyApp(context, pkgName)) {
-                try {
-                    XposedHelpers.setIntField(icon, "mCurrentSetColor", 0)
-                } catch (_: Throwable) {
-                    try {
-                        XposedHelpers.setObjectField(icon, "mCurrentSetColor", 0)
-                    } catch (_: Throwable) {
-                    }
-                }
-                try {
-                    XposedHelpers.callMethod(icon, "updateIconColor")
-                } catch (_: Throwable) {
-                }
-                try {
-                    (icon as? ImageView)?.imageTintList = null
-                } catch (_: Throwable) {
-                }
-                try {
-                    (icon as? ImageView)?.clearColorFilter()
-                } catch (_: Throwable) {
-                }
-            }
-        } catch (_: Throwable) {
-        }
-    }
-
-    private fun setNotificationIcon(
-        statusBarIcon: Any?,
-        context: Context,
-        param: XC_MethodHook.MethodHookParam
-    ) {
-        try {
-            if (statusBarIcon == null) return
-            val pkgName = XposedHelpers.getObjectField(statusBarIcon, "pkg") as? String ?: return
-            if (!isThirdPartyApp(context, pkgName)) return
-
-            val icon: Drawable = try {
-                context.packageManager.getApplicationIcon(pkgName)
-            } catch (_: Throwable) {
-                return
-            }
-            param.result = icon
-        } catch (_: Throwable) {
-        }
-    }
-
-    private fun applyCircularStyleToIconView(view: View?) {
-        if (view !is ImageView) return
-
-        val pkgName = try {
-            val statusBarIcon = XposedHelpers.getObjectField(view, "mIcon")
-            XposedHelpers.getObjectField(statusBarIcon, "pkg") as? String
-        } catch (_: Throwable) {
-            null
-        } ?: return
-
-        val context = view.context
-        if (!isThirdPartyApp(context, pkgName)) return
-
-        val targetSizePx = dpToPx(context, 20f)
-        val lp = view.layoutParams
-        if (lp != null && (lp.width != targetSizePx || lp.height != targetSizePx)) {
-            lp.width = targetSizePx
-            lp.height = targetSizePx
-            view.layoutParams = lp
-        }
-
-        view.scaleType = ImageView.ScaleType.CENTER_CROP
-
-        view.outlineProvider = object : ViewOutlineProvider() {
-            override fun getOutline(view: View, outline: Outline) {
-                if (view.width > 0 && view.height > 0) {
-                    val radius = view.width / 2f
-                    outline.setRoundRect(0, 0, view.width, view.height, radius)
-                } else {
-                    outline.setRoundRect(0, 0, 1, 1, 0.5f)
-                }
-            }
-        }
-        view.clipToOutline = true
-        view.background = null
-        view.imageTintList = null
-    }
-
-    private fun dpToPx(context: Context, dp: Float): Int {
-        return TypedValue.applyDimension(
-            TypedValue.COMPLEX_UNIT_DIP, dp, context.resources.displayMetrics
-        ).toInt()
     }
 
     private fun isThirdPartyApp(context: Context, pkgName: String): Boolean {
         return try {
             val appInfo = context.packageManager.getApplicationInfo(pkgName, 0)
-            val isSystemApp = (appInfo.flags and android.content.pm.ApplicationInfo.FLAG_SYSTEM) != 0
-            val isUpdatedSystemApp =
-                (appInfo.flags and android.content.pm.ApplicationInfo.FLAG_UPDATED_SYSTEM_APP) != 0
+            val isSystemApp = (appInfo.flags and ApplicationInfo.FLAG_SYSTEM) != 0
+            val isUpdatedSystemApp = (appInfo.flags and ApplicationInfo.FLAG_UPDATED_SYSTEM_APP) != 0
             !isSystemApp && !isUpdatedSystemApp
         } catch (_: Throwable) {
             false

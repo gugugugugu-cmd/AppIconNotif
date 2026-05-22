@@ -3,24 +3,16 @@ package com.example.appiconnotif
 import android.app.Notification
 import android.content.Context
 import android.content.pm.ApplicationInfo
-import android.graphics.Color
-import android.graphics.drawable.ColorDrawable
-import android.os.Build
 import android.widget.ImageView
 import de.robv.android.xposed.IXposedHookLoadPackage
 import de.robv.android.xposed.XC_MethodHook
-import de.robv.android.xposed.XposedBridge
 import de.robv.android.xposed.XposedHelpers
 import de.robv.android.xposed.callbacks.XC_LoadPackage
 
 class NotificationIconHook : IXposedHookLoadPackage {
 
-    companion object {
-        private const val SYSTEMUI = "com.android.systemui"
-    }
-
     override fun handleLoadPackage(lpparam: XC_LoadPackage.LoadPackageParam) {
-        if (lpparam.packageName != SYSTEMUI) return
+        if (lpparam.packageName != "com.android.systemui") return
         hookNotificationHeaderViewWrapper(lpparam)
         StatusbarAppIconHook.hook(lpparam)
     }
@@ -28,16 +20,18 @@ class NotificationIconHook : IXposedHookLoadPackage {
     private fun hookNotificationHeaderViewWrapper(lpparam: XC_LoadPackage.LoadPackageParam) {
         try {
             val wrapperClass = XposedHelpers.findClass(
-                "$SYSTEMUI.statusbar.notification.row.wrapper.NotificationHeaderViewWrapper",
+                "com.android.systemui.statusbar.notification.row.wrapper.NotificationHeaderViewWrapper",
                 lpparam.classLoader
             )
             val rowClass = XposedHelpers.findClass(
-                "$SYSTEMUI.statusbar.notification.row.ExpandableNotificationRow",
+                "com.android.systemui.statusbar.notification.row.ExpandableNotificationRow",
                 lpparam.classLoader
             )
 
             XposedHelpers.findAndHookMethod(
-                wrapperClass, "onContentUpdated", rowClass,
+                wrapperClass,
+                "onContentUpdated",
+                rowClass,
                 object : XC_MethodHook() {
                     override fun afterHookedMethod(param: MethodHookParam) {
                         try {
@@ -46,11 +40,7 @@ class NotificationIconHook : IXposedHookLoadPackage {
                             val entry = try {
                                 XposedHelpers.callMethod(row, "getEntry")
                             } catch (_: Throwable) {
-                                try {
-                                    XposedHelpers.getObjectField(row, "mEntry")
-                                } catch (_: Throwable) {
-                                    XposedHelpers.getObjectField(row, "mEntryAdapter")
-                                }
+                                XposedHelpers.getObjectField(row, "mEntry")
                             }
 
                             val sbn = try {
@@ -59,105 +49,24 @@ class NotificationIconHook : IXposedHookLoadPackage {
                                 XposedHelpers.getObjectField(entry, "mSbn")
                             }
 
+                            val pkg = XposedHelpers.callMethod(sbn, "getPackageName") as? String ?: return
+
+                            val iconView = XposedHelpers.getObjectField(param.thisObject, "mIcon") as? ImageView ?: return
+                            if (!isThirdPartyApp(iconView.context, pkg)) return
+
+                            val icon = iconView.context.packageManager.getApplicationIcon(pkg)
+                            iconView.setImageDrawable(icon)
+
                             val notification = XposedHelpers.callMethod(sbn, "getNotification") as Notification
-                            val pkgName = XposedHelpers.callMethod(sbn, "getPackageName") as? String ?: return
-
-                            val iconView = try {
-                                XposedHelpers.getObjectField(param.thisObject, "mIcon") as ImageView
-                            } catch (_: Throwable) {
-                                return
-                            }
-
-                            if (!isThirdPartyApp(iconView.context, pkgName)) return
-
-                            val appIcon = try {
-                                iconView.context.packageManager.getApplicationIcon(pkgName)
-                            } catch (_: Throwable) {
-                                return
-                            }
-
-                            val imageIconTagId = iconView.context.resources.getIdentifier(
-                                "image_icon_tag", "id", SYSTEMUI
-                            )
-
-                            applyOriginalAppIcon(iconView, appIcon)
-
-                            if (imageIconTagId != 0) {
-                                iconView.setTag(imageIconTagId, notification.smallIcon)
-                            }
-
-                            try {
-                                val workProfileImage =
-                                    XposedHelpers.getObjectField(param.thisObject, "mWorkProfileImage") as? ImageView
-                                if (workProfileImage != null) {
-                                    workProfileImage.setImageIcon(notification.smallIcon)
-                                    if (imageIconTagId != 0) {
-                                        workProfileImage.setTag(imageIconTagId, notification.smallIcon)
-                                    }
-                                }
-                            } catch (_: Throwable) {
+                            val tagId = iconView.context.resources.getIdentifier("image_icon_tag", "id", "com.android.systemui")
+                            if (tagId != 0) {
+                                iconView.setTag(tagId, notification.smallIcon)
                             }
                         } catch (_: Throwable) {
                         }
                     }
                 }
             )
-        } catch (_: Throwable) {
-        }
-    }
-
-    private fun applyOriginalAppIcon(imageView: ImageView, drawable: android.graphics.drawable.Drawable) {
-        clearIconStyling(imageView)
-
-        try {
-            imageView.setImageIcon(null)
-        } catch (_: Throwable) {
-        }
-
-        imageView.setImageDrawable(drawable)
-        imageView.invalidate()
-    }
-
-    private fun clearIconStyling(imageView: ImageView) {
-        imageView.setPadding(0, 0, 0, 0)
-        imageView.background = ColorDrawable(Color.TRANSPARENT)
-
-        try {
-            imageView.imageTintList = null
-        } catch (_: Throwable) {
-        }
-
-        try {
-            imageView.backgroundTintList = null
-        } catch (_: Throwable) {
-        }
-
-        try {
-            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.LOLLIPOP) {
-                imageView.imageTintMode = null
-                imageView.backgroundTintMode = null
-            }
-        } catch (_: Throwable) {
-        }
-
-        try {
-            imageView.clearColorFilter()
-        } catch (_: Throwable) {
-        }
-
-        try {
-            @Suppress("DEPRECATION")
-            imageView.setColorFilter(null)
-        } catch (_: Throwable) {
-        }
-
-        try {
-            XposedHelpers.setObjectField(imageView, "mApplyCircularCrop", false)
-        } catch (_: Throwable) {
-        }
-
-        try {
-            XposedHelpers.callMethod(imageView, "setApplyCircularCrop", false)
         } catch (_: Throwable) {
         }
     }
