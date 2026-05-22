@@ -1,8 +1,6 @@
 package com.example.appiconnotif
 
 import android.content.Context
-import android.content.pm.ApplicationInfo
-import android.graphics.drawable.Drawable
 import de.robv.android.xposed.XC_MethodHook
 import de.robv.android.xposed.XposedHelpers
 import de.robv.android.xposed.callbacks.XC_LoadPackage
@@ -17,7 +15,6 @@ object StatusbarAppIconHook {
                 "$SYSTEMUI.statusbar.StatusBarIconView",
                 lpparam.classLoader
             )
-
             hookUpdateIconColor(statusBarIconViewClass)
             hookGetIcon(statusBarIconViewClass, lpparam)
         } catch (_: Throwable) {
@@ -32,49 +29,29 @@ object StatusbarAppIconHook {
                 object : XC_MethodHook() {
                     override fun beforeHookedMethod(param: MethodHookParam) {
                         try {
-                            val thisObj = param.thisObject
+                            val thisObj = param.thisObject ?: return
 
-                            val isNotification = try {
-                                XposedHelpers.getObjectField(thisObj, "mNotification") != null
-                            } catch (_: Throwable) {
-                                false
-                            }
+                            // 只有是通知图标签时才拦截着色
+                            val isNotification = runCatching { XposedHelpers.getObjectField(thisObj, "mNotification") != null }
+                                .getOrDefault(false)
                             if (!isNotification) return
 
-                            val statusBarIcon = try {
-                                XposedHelpers.getObjectField(thisObj, "mIcon")
-                            } catch (_: Throwable) {
-                                null
-                            } ?: return
+                            val statusBarIcon = runCatching { XposedHelpers.getObjectField(thisObj, "mIcon") }
+                                .getOrNull() ?: return
 
-                            val pkgName = try {
-                                XposedHelpers.getObjectField(statusBarIcon, "pkg") as? String
-                            } catch (_: Throwable) {
-                                null
-                            } ?: return
+                            val pkgName = runCatching { XposedHelpers.getObjectField(statusBarIcon, "pkg") as? String }
+                                .getOrNull() ?: return
 
-                            val context = try {
-                                XposedHelpers.getObjectField(thisObj, "mContext") as Context
-                            } catch (_: Throwable) {
-                                null
-                            } ?: return
+                            val context = runCatching { XposedHelpers.getObjectField(thisObj, "mContext") as Context }
+                                .getOrNull() ?: return
 
-                            if (isThirdPartyApp(context, pkgName)) {
-                                try {
-                                    XposedHelpers.setIntField(thisObj, "mCurrentSetColor", 0)
-                                } catch (_: Throwable) {
-                                }
-
-                                try {
-                                    XposedHelpers.callMethod(thisObj, "setStaticDrawableColor", 0)
-                                } catch (_: Throwable) {
-                                }
-
-                                try {
-                                    XposedHelpers.callMethod(thisObj, "setDecorColor", 0)
-                                } catch (_: Throwable) {
-                                }
-
+                            // 如果是第三方应用，强制清空/阻止系统自带的变色、着色逻辑
+                            if (XposedUtils.isThirdPartyApp(context, pkgName)) {
+                                runCatching { XposedHelpers.setIntField(thisObj, "mCurrentSetColor", 0) }
+                                runCatching { XposedHelpers.callMethod(thisObj, "setStaticDrawableColor", 0) }
+                                runCatching { XposedHelpers.callMethod(thisObj, "setDecorColor", 0) }
+                                
+                                // 核心优化：直接中断原方法的执行（因为返回了 null），不再执行原有的 updateIconColor 逻辑
                                 param.result = null
                             }
                         } catch (_: Throwable) {
@@ -103,56 +80,26 @@ object StatusbarAppIconHook {
                 object : XC_MethodHook() {
                     override fun beforeHookedMethod(param: MethodHookParam) {
                         try {
-                            val thisObj = param.thisObject
-                            val statusBarIcon = param.args[0]
+                            val thisObj = param.thisObject ?: return
+                            val statusBarIcon = param.args[0] ?: return
 
-                            val context = try {
-                                XposedHelpers.getObjectField(thisObj, "mContext") as Context
-                            } catch (_: Throwable) {
-                                return
+                            val context = runCatching { XposedHelpers.getObjectField(thisObj, "mContext") as Context }
+                                .getOrNull() ?: return
+
+                            val pkgName = XposedHelpers.getObjectField(statusBarIcon, "pkg") as? String ?: return
+                            
+                            if (XposedUtils.isThirdPartyApp(context, pkgName)) {
+                                // 走缓存获取，大大降低状态栏图标刷新时的开销
+                                XposedUtils.getCachedAppIcon(context, pkgName)?.let { customIcon ->
+                                    param.result = customIcon // 替换返回值
+                                }
                             }
-
-                            setNotificationIcon(statusBarIcon, context, param)
                         } catch (_: Throwable) {
                         }
                     }
                 }
             )
         } catch (_: Throwable) {
-        }
-    }
-
-    private fun setNotificationIcon(
-        statusBarIcon: Any?,
-        context: Context,
-        param: XC_MethodHook.MethodHookParam
-    ) {
-        try {
-            if (statusBarIcon == null) return
-
-            val pkgName = XposedHelpers.getObjectField(statusBarIcon, "pkg") as? String ?: return
-            if (!isThirdPartyApp(context, pkgName)) return
-
-            val icon: Drawable = try {
-                context.packageManager.getApplicationIcon(pkgName)
-            } catch (_: Throwable) {
-                return
-            }
-
-            param.result = icon
-        } catch (_: Throwable) {
-        }
-    }
-
-    private fun isThirdPartyApp(context: Context, pkgName: String): Boolean {
-        return try {
-            val appInfo = context.packageManager.getApplicationInfo(pkgName, 0)
-            val isSystemApp = (appInfo.flags and ApplicationInfo.FLAG_SYSTEM) != 0
-            val isUpdatedSystemApp =
-                (appInfo.flags and ApplicationInfo.FLAG_UPDATED_SYSTEM_APP) != 0
-            !isSystemApp && !isUpdatedSystemApp
-        } catch (_: Throwable) {
-            false
         }
     }
 }
