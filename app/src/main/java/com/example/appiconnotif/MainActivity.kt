@@ -5,6 +5,7 @@ import android.content.Context
 import android.content.pm.ApplicationInfo
 import android.os.Bundle
 import android.widget.ListView
+import android.widget.TextView
 import android.widget.Toast
 import java.util.TreeSet
 
@@ -22,6 +23,9 @@ class MainActivity : Activity() {
         selectedPackages.addAll(prefs.getStringSet(Config.KEY_TARGET_PACKAGES, emptySet()) ?: emptySet())
 
         val listView = findViewById<ListView>(R.id.app_list)
+        val emptyView = findViewById<TextView>(R.id.empty_view)
+        listView.emptyView = emptyView  // 列表为空时显示 emptyView
+
         val apps = loadApps()
 
         adapter = AppListAdapter(this, apps) { item, checked ->
@@ -31,7 +35,7 @@ class MainActivity : Activity() {
                 selectedPackages.remove(item.packageName)
             }
 
-            // 使用 commit() 确保立即写入磁盘，供其他进程读取
+            // 使用 commit() 确保立即写入磁盘
             prefs.edit()
                 .putStringSet(Config.KEY_TARGET_PACKAGES, selectedPackages)
                 .commit()
