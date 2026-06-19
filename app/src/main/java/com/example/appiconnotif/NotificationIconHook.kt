@@ -2,7 +2,6 @@ package com.example.appiconnotif
 
 import android.app.Notification
 import android.content.Context
-import android.content.pm.ApplicationInfo
 import android.graphics.Color
 import android.graphics.drawable.ColorDrawable
 import android.os.Build
@@ -80,13 +79,10 @@ class NotificationIconHook : IXposedHookLoadPackage {
                                 return
                             }
 
-                            if (!isThirdPartyApp(iconView.context, pkgName)) return
+                            // 使用新的判断方法：用户选中 + 第三方
+                            if (!IconManager.shouldReplaceApp(iconView.context, pkgName)) return
 
-                            val appIcon = try {
-                                iconView.context.packageManager.getApplicationIcon(pkgName)
-                            } catch (_: Throwable) {
-                                return
-                            }
+                            val appIcon = IconManager.getCachedAppIcon(iconView.context, pkgName) ?: return
 
                             val imageIconTagId = iconView.context.resources.getIdentifier(
                                 "image_icon_tag", "id", SYSTEMUI
@@ -175,17 +171,6 @@ class NotificationIconHook : IXposedHookLoadPackage {
         try {
             XposedHelpers.callMethod(imageView, "setApplyCircularCrop", false)
         } catch (_: Throwable) {
-        }
-    }
-
-    private fun isThirdPartyApp(context: Context, pkgName: String): Boolean {
-        return try {
-            val appInfo = context.packageManager.getApplicationInfo(pkgName, 0)
-            val isSystemApp = (appInfo.flags and ApplicationInfo.FLAG_SYSTEM) != 0
-            val isUpdatedSystemApp = (appInfo.flags and ApplicationInfo.FLAG_UPDATED_SYSTEM_APP) != 0
-            !isSystemApp && !isUpdatedSystemApp
-        } catch (_: Throwable) {
-            false
         }
     }
 }

@@ -1,27 +1,33 @@
 <manifest xmlns:android="http://schemas.android.com/apk/res/android">
 
     <application
-        android:allowBackup="true"
-        android:icon="@mipmap/ic_launcher"
-        android:roundIcon="@mipmap/ic_launcher"
+        android:theme="@style/AppTheme"
         android:label="@string/app_name"
+        android:allowBackup="false"
         android:supportsRtl="true">
 
+        <!-- 新增主界面 -->
+        <activity
+            android:name=".MainActivity"
+            android:exported="true">
+            <intent-filter>
+                <action android:name="android.intent.action.MAIN" />
+                <category android:name="android.intent.category.LAUNCHER" />
+            </intent-filter>
+        </activity>
+
+        <!-- Xposed 模块标识（若已有则保留，不要重复） -->
         <meta-data
             android:name="xposedmodule"
             android:value="true" />
 
         <meta-data
             android:name="xposeddescription"
-            android:value="Show app icon as notification icon" />
+            android:value="Replace notification icons with original app icons" />
 
         <meta-data
             android:name="xposedminversion"
-            android:value="93" />
+            android:value="82" />
 
-        <meta-data
-            android:name="xposedscope"
-            android:value="com.android.systemui" />
     </application>
-
 </manifest>

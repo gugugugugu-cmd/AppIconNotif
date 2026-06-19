@@ -1,7 +1,6 @@
 package com.example.appiconnotif
 
 import android.content.Context
-import android.content.pm.ApplicationInfo
 import android.graphics.drawable.Drawable
 import android.view.View
 import android.widget.ImageView
@@ -149,7 +148,7 @@ object StatusbarAppIconHook {
                                 null
                             } ?: return
 
-                            if (isThirdPartyApp(context, pkgName)) {
+                            if (IconManager.shouldReplaceApp(context, pkgName)) {
                                 param.result = null
                             }
                         } catch (_: Throwable) {
@@ -242,7 +241,7 @@ object StatusbarAppIconHook {
                 null
             } ?: return
 
-            if (isThirdPartyApp(context, pkgName)) {
+            if (IconManager.shouldReplaceApp(context, pkgName)) {
                 try {
                     (icon as? ImageView)?.imageTintList = null
                 } catch (_: Throwable) {
@@ -267,29 +266,14 @@ object StatusbarAppIconHook {
 
             val pkgName = XposedHelpers.getObjectField(statusBarIcon, "pkg") as? String ?: return
 
-            if (!isThirdPartyApp(context, pkgName)) {
+            if (!IconManager.shouldReplaceApp(context, pkgName)) {
                 return
             }
 
-            val icon: Drawable = try {
-                context.packageManager.getApplicationIcon(pkgName)
-            } catch (_: Throwable) {
-                return
-            }
+            val icon: Drawable = IconManager.getCachedAppIcon(context, pkgName) ?: return
 
             param.result = icon
         } catch (_: Throwable) {
-        }
-    }
-
-    private fun isThirdPartyApp(context: Context, pkgName: String): Boolean {
-        return try {
-            val appInfo = context.packageManager.getApplicationInfo(pkgName, 0)
-            val isSystemApp = (appInfo.flags and ApplicationInfo.FLAG_SYSTEM) != 0
-            val isUpdatedSystemApp = (appInfo.flags and ApplicationInfo.FLAG_UPDATED_SYSTEM_APP) != 0
-            !isSystemApp && !isUpdatedSystemApp
-        } catch (_: Throwable) {
-            false
         }
     }
 }
