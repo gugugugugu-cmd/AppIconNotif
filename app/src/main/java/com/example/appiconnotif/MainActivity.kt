@@ -1,6 +1,5 @@
 package com.example.appiconnotif
 
-import android.app.Activity
 import android.content.Context
 import android.content.pm.ApplicationInfo
 import android.os.Bundle
@@ -9,11 +8,12 @@ import android.view.MenuItem
 import android.widget.ListView
 import android.widget.TextView
 import android.widget.Toast
+import androidx.appcompat.app.AppCompatActivity
 import androidx.appcompat.widget.SearchView
 import androidx.appcompat.widget.Toolbar
 import java.util.TreeSet
 
-class MainActivity : Activity() {
+class MainActivity : AppCompatActivity() {
 
     private lateinit var adapter: AppListAdapter
     private val selectedPackages = TreeSet<String>()
@@ -27,8 +27,7 @@ class MainActivity : Activity() {
         setContentView(R.layout.activity_main)
 
         val toolbar = findViewById<Toolbar>(R.id.toolbar)
-        // 设置 Toolbar 作为 ActionBar
-        setActionBar(toolbar)
+        setSupportActionBar(toolbar)
         supportActionBar?.setDisplayHomeAsUpEnabled(false)
 
         val prefs = getSharedPreferences(Config.PREF_NAME, Context.MODE_PRIVATE)
@@ -38,7 +37,6 @@ class MainActivity : Activity() {
         emptyView = findViewById(R.id.empty_view)
         listView.emptyView = emptyView
 
-        // 加载所有应用（含系统应用标记，但过滤掉系统应用）
         appList = loadApps()
         filteredList = appList.toMutableList()
 
@@ -76,7 +74,6 @@ class MainActivity : Activity() {
                     return true
                 }
             })
-            // 展开搜索框时自动获取焦点
             searchItem.setOnActionExpandListener(object : MenuItem.OnActionExpandListener {
                 override fun onMenuItemActionExpand(item: MenuItem): Boolean {
                     return true
@@ -97,15 +94,12 @@ class MainActivity : Activity() {
             R.id.action_select_all -> {
                 val allChecked = filteredList.all { it.checked }
                 val newChecked = !allChecked
-                // 更新所有可见项的状态
                 filteredList.forEach { it.checked = newChecked }
-                // 同步更新 selectedPackages
                 if (newChecked) {
                     filteredList.forEach { selectedPackages.add(it.packageName) }
                 } else {
                     filteredList.forEach { selectedPackages.remove(it.packageName) }
                 }
-                // 保存配置
                 val prefs = getSharedPreferences(Config.PREF_NAME, Context.MODE_PRIVATE)
                 prefs.edit()
                     .putStringSet(Config.KEY_TARGET_PACKAGES, selectedPackages)
@@ -130,7 +124,6 @@ class MainActivity : Activity() {
                         it.packageName.lowercase().contains(lower)
             })
         }
-        // 保留之前的选中状态（已保存在 AppItem 中）
         adapter.notifyDataSetChanged()
         listView.invalidate()
     }
