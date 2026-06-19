@@ -2,15 +2,12 @@ package com.example.appiconnotif
 
 import android.content.Context
 import android.content.pm.ApplicationInfo
+import android.content.SharedPreferences
 import android.graphics.drawable.Drawable
 import android.util.LruCache
-import de.robv.android.xposed.XSharedPreferences
+import com.crossbowffs.remotepreferences.RemotePreferences
 
 object IconManager {
-
-    private const val MODULE_PACKAGE = "com.example.appiconnotif"
-    private const val PREF_NAME = "app_icon_notif_config"
-    private const val KEY_TARGET_PACKAGES = "target_packages"
 
     // 设置最大缓存 60 个应用的图标，防止频繁跨进程 IPC 造成 SystemUI 卡顿
     private val iconCache = LruCache<String, Drawable>(60)
@@ -18,18 +15,19 @@ object IconManager {
     private val thirdPartyAppCache = HashMap<String, Boolean>()
 
     @Volatile
-    private var prefs: XSharedPreferences? = null
+    private var remotePrefs: SharedPreferences? = null
 
-    private fun getPrefs(): XSharedPreferences {
-        val current = prefs
-        if (current != null) {
-            current.reload()
-            return current
-        }
+    private fun getRemotePrefs(context: Context): SharedPreferences {
+        remotePrefs?.let { return it }
 
-        return XSharedPreferences(MODULE_PACKAGE, PREF_NAME).also {
-            it.makeWorldReadable()
-            prefs = it
+        return synchronized(this) {
+            remotePrefs ?: RemotePreferences(
+                context,
+                Config.PREFERENCE_AUTHORITY,
+                Config.PREF_NAME
+            ).also {
+                remotePrefs = it
+            }
         }
     }
 
@@ -38,7 +36,9 @@ object IconManager {
      */
     fun shouldReplaceApp(context: Context, pkgName: String): Boolean {
         val targets = try {
-            getPrefs().getStringSet(KEY_TARGET_PACKAGES, emptySet()) ?: emptySet()
+            getRemotePrefs(context)
+                .getStringSet(Config.KEY_TARGET_PACKAGES, emptySet())
+                ?: emptySet()
         } catch (_: Throwable) {
             emptySet()
         }

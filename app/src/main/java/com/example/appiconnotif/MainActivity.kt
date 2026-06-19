@@ -10,11 +10,6 @@ import java.util.TreeSet
 
 class MainActivity : Activity() {
 
-    companion object {
-        const val PREF_NAME = "app_icon_notif_config"
-        const val KEY_TARGET_PACKAGES = "target_packages"
-    }
-
     private lateinit var adapter: AppListAdapter
     private val selectedPackages = TreeSet<String>()
 
@@ -23,8 +18,8 @@ class MainActivity : Activity() {
 
         setContentView(R.layout.activity_main)
 
-        val prefs = getSharedPreferences(PREF_NAME, Context.MODE_WORLD_READABLE)
-        selectedPackages.addAll(prefs.getStringSet(KEY_TARGET_PACKAGES, emptySet()) ?: emptySet())
+        val prefs = getSharedPreferences(Config.PREF_NAME, Context.MODE_PRIVATE)
+        selectedPackages.addAll(prefs.getStringSet(Config.KEY_TARGET_PACKAGES, emptySet()) ?: emptySet())
 
         val listView = findViewById<ListView>(R.id.app_list)
         val apps = loadApps()
@@ -36,9 +31,10 @@ class MainActivity : Activity() {
                 selectedPackages.remove(item.packageName)
             }
 
+            // 使用 commit() 确保立即写入磁盘，供其他进程读取
             prefs.edit()
-                .putStringSet(KEY_TARGET_PACKAGES, selectedPackages)
-                .apply()
+                .putStringSet(Config.KEY_TARGET_PACKAGES, selectedPackages)
+                .commit()
 
             Toast.makeText(this, "配置已保存，重启 SystemUI 后生效", Toast.LENGTH_SHORT).show()
         }

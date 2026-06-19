@@ -1,7 +1,6 @@
 package com.example.appiconnotif
 
 import android.app.Notification
-import android.content.Context
 import android.graphics.Color
 import android.graphics.drawable.ColorDrawable
 import android.os.Build
@@ -79,7 +78,6 @@ class NotificationIconHook : IXposedHookLoadPackage {
                                 return
                             }
 
-                            // 使用新的判断方法：用户选中 + 第三方
                             if (!IconManager.shouldReplaceApp(iconView.context, pkgName)) return
 
                             val appIcon = IconManager.getCachedAppIcon(iconView.context, pkgName) ?: return

@@ -6,7 +6,7 @@
         android:allowBackup="false"
         android:supportsRtl="true">
 
-        <!-- 新增主界面 -->
+        <!-- 主界面 Activity -->
         <activity
             android:name=".MainActivity"
             android:exported="true">
@@ -16,15 +16,19 @@
             </intent-filter>
         </activity>
 
-        <!-- Xposed 模块标识（若已有则保留，不要重复） -->
+        <!-- RemotePreferences ContentProvider -->
+        <provider
+            android:name=".ConfigProvider"
+            android:authorities="${applicationId}.preferences"
+            android:exported="true" />
+
+        <!-- Xposed 模块标识 -->
         <meta-data
             android:name="xposedmodule"
             android:value="true" />
-
         <meta-data
             android:name="xposeddescription"
             android:value="Replace notification icons with original app icons" />
-
         <meta-data
             android:name="xposedminversion"
             android:value="82" />
