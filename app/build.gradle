@@ -39,7 +39,7 @@ android {
     }
 }
 
-implementation "com.crossbowffs.remotepreferences:remotepreferences:0.8"
 dependencies {
-    compileOnly files('libs/XposedBridgeApi-82.jar')
+    compileOnly files("libs/XposedBridgeApi-82.jar")
+    implementation "com.crossbowffs.remotepreferences:remotepreferences:0.8"
 }
