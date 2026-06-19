@@ -2,6 +2,7 @@
 <menu xmlns:android="http://schemas.android.com/apk/res/android"
     xmlns:app="http://schemas.android.com/apk/res-auto">
 
+    <!-- 搜索框，使用系统搜索图标 -->
     <item
         android:id="@+id/action_search"
         android:title="搜索"
@@ -9,10 +10,10 @@
         app:showAsAction="always|collapseActionView"
         app:actionViewClass="androidx.appcompat.widget.SearchView" />
 
+    <!-- 全选/取消全选，仅显示文字，无图标避免资源找不到 -->
     <item
         android:id="@+id/action_select_all"
         android:title="全选"
-        android:icon="@android:drawable/ic_menu_select_all"
         app:showAsAction="ifRoom" />
 
 </menu>
