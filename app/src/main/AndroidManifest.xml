@@ -4,15 +4,19 @@
     <uses-permission android:name="android.permission.QUERY_ALL_PACKAGES" />
 
     <application
-        android:theme="@style/AppTheme"
+        android:allowBackup="true"
+        android:icon="@mipmap/ic_launcher"
+        android:roundIcon="@mipmap/ic_launcher"
         android:label="@string/app_name"
         android:allowBackup="false"
-        android:supportsRtl="true">
+        android:supportsRtl="true"
+        android:theme="@style/AppTheme">  <!-- 应用全局主题 -->
 
         <!-- 主界面 Activity -->
         <activity
             android:name=".MainActivity"
-            android:exported="true">
+            android:exported="true"
+            android:theme="@style/AppTheme">  <!-- 亦可单独指定 -->
             <intent-filter>
                 <action android:name="android.intent.action.MAIN" />
                 <category android:name="android.intent.category.LAUNCHER" />
@@ -36,5 +40,8 @@
             android:name="xposedminversion"
             android:value="82" />
 
+        <meta-data
+            android:name="xposedscope"
+            android:value="com.android.systemui" />
     </application>
 </manifest>
