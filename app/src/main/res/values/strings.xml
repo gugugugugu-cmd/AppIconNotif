@@ -1,0 +1,4 @@
+<resources>
+    <string name="app_name">App Icon Notification</string>
+    <string name="xposed_description">Replace notification icons with original app icons</string>
+</resources>
