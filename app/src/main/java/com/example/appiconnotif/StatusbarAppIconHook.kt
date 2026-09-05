@@ -4,239 +4,231 @@ import android.content.Context
 import android.graphics.drawable.Drawable
 import android.view.View
 import android.widget.ImageView
-import de.robv.android.xposed.XC_MethodHook
-import de.robv.android.xposed.XposedBridge
-import de.robv.android.xposed.XposedHelpers
-import de.robv.android.xposed.callbacks.XC_LoadPackage
+import io.github.libxposed.api.XposedInterface
+import io.github.libxposed.api.XposedModule
 
 object StatusbarAppIconHook {
 
     private const val SYSTEMUI = "com.android.systemui"
 
-    private fun log(msg: String) {
-        XposedBridge.log("AppIconNotif: $msg")
-    }
-
-    private fun log(t: Throwable) {
-        XposedBridge.log(t)
-    }
-
-    fun hook(lpparam: XC_LoadPackage.LoadPackageParam) {
+    fun hook(module: XposedModule, classLoader: ClassLoader) {
         try {
-            val notificationIconContainerClass = XposedHelpers.findClass(
+            val notificationIconContainerClass = XposedCompat.findClass(
                 "$SYSTEMUI.statusbar.phone.NotificationIconContainer",
-                lpparam.classLoader
+                classLoader
             )
 
-            val iconStateClass = XposedHelpers.findClass(
+            val iconStateClass = XposedCompat.findClass(
                 "$SYSTEMUI.statusbar.phone.NotificationIconContainer\$IconState",
-                lpparam.classLoader
+                classLoader
             )
 
-            val statusBarIconViewClass = XposedHelpers.findClass(
+            val statusBarIconViewClass = XposedCompat.findClass(
                 "$SYSTEMUI.statusbar.StatusBarIconView",
-                lpparam.classLoader
+                classLoader
             )
 
-            hookApplyIconStates(notificationIconContainerClass)
-            hookIconState(iconStateClass)
-            hookUpdateIconColor(statusBarIconViewClass)
-            hookGetIcon(statusBarIconViewClass, lpparam)
+            hookApplyIconStates(module, notificationIconContainerClass)
+            hookIconState(module, iconStateClass)
+            hookUpdateIconColor(module, statusBarIconViewClass)
+            hookGetIcon(module, statusBarIconViewClass, classLoader)
         } catch (t: Throwable) {
-            log("Failed to initialize StatusbarAppIconHook")
-            log(t)
+            XposedEntry.log("Failed to initialize StatusbarAppIconHook", t)
         }
     }
 
-    private fun hookApplyIconStates(notificationIconContainerClass: Class<*>) {
+    private fun hookApplyIconStates(module: XposedModule, notificationIconContainerClass: Class<*>) {
         try {
-            XposedHelpers.findAndHookMethod(
-                notificationIconContainerClass,
-                "applyIconStates",
-                object : XC_MethodHook() {
-                    override fun afterHookedMethod(param: MethodHookParam) {
-                        try {
-                            @Suppress("UNCHECKED_CAST")
-                            val iconStates = XposedHelpers.getObjectField(param.thisObject, "mIconStates") as? HashMap<View, Any> ?: return
+            val method = XposedCompat.findMethodBestMatch(notificationIconContainerClass, "applyIconStates")
+            module.hook(method)
+                .setExceptionMode(XposedInterface.ExceptionMode.PROTECTIVE)
+                .intercept { chain ->
+                    chain.proceed()
+                    try {
+                        // 不同 ROM 上 mIconStates 可能是 HashMap 或 ArrayMap，统一按 Map 处理
+                        val iconStates = XposedCompat.getObjectField(chain.thisObject, "mIconStates")
+                            as? Map<*, *> ?: return@intercept null
 
-                            for (icon in iconStates.keys) {
-                                removeTintForStatusbarIcon(icon, false)
-                            }
-                        } catch (_: Throwable) {
+                        for (icon in iconStates.keys) {
+                            removeTintForStatusbarIcon(icon)
                         }
+                    } catch (_: Throwable) {
                     }
+                    null
                 }
-            )
         } catch (t: Throwable) {
-            log("Failed to hook applyIconStates")
-            log(t)
+            XposedEntry.log("Failed to hook applyIconStates", t)
         }
     }
 
-    private fun hookIconState(iconStateClass: Class<*>) {
-        val hook = object : XC_MethodHook() {
-            override fun afterHookedMethod(param: MethodHookParam) {
-                try {
-                    val icon = param.args[0] as? View ?: return
+    private fun hookIconState(module: XposedModule, iconStateClass: Class<*>) {
+        val hooker = { chain: XposedInterface.Chain ->
+            chain.proceed()
+            try {
+                val icon = chain.getArg(0) as? View
+                if (icon != null) {
                     val isNotification = try {
-                        XposedHelpers.getObjectField(icon, "mNotification") != null
+                        XposedCompat.getObjectField(icon, "mNotification") != null
                     } catch (_: Throwable) {
                         false
                     }
                     removeTintForStatusbarIcon(icon, isNotification)
-                } catch (_: Throwable) {
                 }
+            } catch (_: Throwable) {
             }
+            null
         }
 
         try {
-            XposedHelpers.findAndHookMethod(
-                iconStateClass,
-                "initFrom",
-                View::class.java,
-                hook
-            )
+            val initFrom = XposedCompat.findMethodBestMatch(iconStateClass, "initFrom", View::class.java)
+            module.hook(initFrom)
+                .setExceptionMode(XposedInterface.ExceptionMode.PROTECTIVE)
+                .intercept(hooker)
         } catch (t: Throwable) {
-            log("Failed to hook IconState.initFrom")
-            log(t)
+            XposedEntry.log("Failed to hook IconState.initFrom", t)
         }
 
         try {
-            XposedHelpers.findAndHookMethod(
-                iconStateClass,
-                "applyToView",
-                View::class.java,
-                hook
-            )
+            val applyToView = XposedCompat.findMethodBestMatch(iconStateClass, "applyToView", View::class.java)
+            module.hook(applyToView)
+                .setExceptionMode(XposedInterface.ExceptionMode.PROTECTIVE)
+                .intercept(hooker)
         } catch (t: Throwable) {
-            log("Failed to hook IconState.applyToView")
-            log(t)
+            XposedEntry.log("Failed to hook IconState.applyToView", t)
         }
     }
 
-    private fun hookUpdateIconColor(statusBarIconViewClass: Class<*>) {
+    private fun hookUpdateIconColor(module: XposedModule, statusBarIconViewClass: Class<*>) {
         try {
-            XposedHelpers.findAndHookMethod(
-                statusBarIconViewClass,
-                "updateIconColor",
-                object : XC_MethodHook() {
-                    override fun beforeHookedMethod(param: MethodHookParam) {
-                        try {
-                            val thisObj = param.thisObject
-                            val isNotification = try {
-                                XposedHelpers.getObjectField(thisObj, "mNotification") != null
-                            } catch (_: Throwable) {
-                                false
-                            }
-                            if (!isNotification) return
-
-                            val statusBarIcon = try {
-                                XposedHelpers.getObjectField(thisObj, "mIcon")
-                            } catch (_: Throwable) {
-                                null
-                            } ?: return
-
-                            val pkgName = try {
-                                XposedHelpers.getObjectField(statusBarIcon, "pkg") as? String
-                            } catch (_: Throwable) {
-                                null
-                            } ?: return
-
-                            val context = try {
-                                XposedHelpers.getObjectField(thisObj, "mContext") as Context
-                            } catch (_: Throwable) {
-                                null
-                            } ?: return
-
-                            if (IconManager.shouldReplaceApp(context, pkgName)) {
-                                param.result = null
-                            }
+            val method = XposedCompat.findMethodBestMatch(statusBarIconViewClass, "updateIconColor")
+            module.hook(method)
+                .setExceptionMode(XposedInterface.ExceptionMode.PROTECTIVE)
+                .intercept { chain ->
+                    // 旧版 beforeHookedMethod 中 param.result = null 的等价写法：
+                    // 不调用 chain.proceed()，直接返回 null 以跳过原方法
+                    try {
+                        val thisObj = chain.thisObject
+                        val isNotification = try {
+                            XposedCompat.getObjectField(thisObj, "mNotification") != null
                         } catch (_: Throwable) {
+                            false
                         }
+                        if (!isNotification) return@intercept chain.proceed()
+
+                        val statusBarIcon = try {
+                            XposedCompat.getObjectField(thisObj, "mIcon")
+                        } catch (_: Throwable) {
+                            null
+                        } ?: return@intercept chain.proceed()
+
+                        val pkgName = try {
+                            XposedCompat.getObjectField(statusBarIcon, "pkg") as? String
+                        } catch (_: Throwable) {
+                            null
+                        } ?: return@intercept chain.proceed()
+
+                        val context = try {
+                            XposedCompat.getObjectField(thisObj, "mContext") as? Context
+                        } catch (_: Throwable) {
+                            null
+                        } ?: return@intercept chain.proceed()
+
+                        if (IconManager.shouldReplaceApp(context, pkgName)) {
+                            // 跳过原方法（不着色）
+                            null
+                        } else {
+                            chain.proceed()
+                        }
+                    } catch (t: Throwable) {
+                        XposedEntry.log("error in updateIconColor hook", t)
+                        chain.proceed()
                     }
                 }
-            )
         } catch (t: Throwable) {
-            log("Failed to hook StatusBarIconView.updateIconColor")
-            log(t)
+            XposedEntry.log("Failed to hook StatusBarIconView.updateIconColor", t)
         }
     }
 
     private fun hookGetIcon(
+        module: XposedModule,
         statusBarIconViewClass: Class<*>,
-        lpparam: XC_LoadPackage.LoadPackageParam
+        classLoader: ClassLoader
     ) {
         try {
-            val statusBarIconClass = XposedHelpers.findClass(
+            val statusBarIconClass = XposedCompat.findClass(
                 "com.android.internal.statusbar.StatusBarIcon",
-                lpparam.classLoader
+                classLoader
             )
-            XposedHelpers.findAndHookMethod(
-                statusBarIconViewClass,
-                "getIcon",
-                statusBarIconClass,
-                object : XC_MethodHook() {
-                    override fun beforeHookedMethod(param: MethodHookParam) {
-                        try {
-                            val thisObj = param.thisObject
-                            val statusBarIcon = param.args[0]
-                            val sysuiContext = try {
-                                XposedHelpers.getObjectField(thisObj, "mContext") as Context
-                            } catch (_: Throwable) {
-                                return
-                            }
-                            val sbn = try {
-                                XposedHelpers.getObjectField(thisObj, "mNotification")
+            val method = XposedCompat.findMethodBestMatch(
+                statusBarIconViewClass, "getIcon", statusBarIconClass
+            )
+            module.hook(method)
+                .setExceptionMode(XposedInterface.ExceptionMode.PROTECTIVE)
+                .intercept { chain ->
+                    // 旧版 beforeHookedMethod + param.result = drawable 的等价写法：
+                    // 替换返回值时不调用 chain.proceed()
+                    try {
+                        val thisObj = chain.thisObject
+                        val statusBarIcon = chain.getArg(0)
+                        val sysuiContext = try {
+                            XposedCompat.getObjectField(thisObj, "mContext") as? Context
+                        } catch (_: Throwable) {
+                            null
+                        } ?: return@intercept chain.proceed()
+
+                        val sbn = try {
+                            XposedCompat.getObjectField(thisObj, "mNotification")
+                        } catch (_: Throwable) {
+                            null
+                        }
+
+                        var appContext: Context? = null
+                        if (sbn != null) {
+                            appContext = try {
+                                XposedCompat.callMethod(sbn, "getPackageContext", sysuiContext) as? Context
                             } catch (_: Throwable) {
                                 null
                             }
-                            var appContext: Context? = null
-                            if (sbn != null) {
-                                appContext = try {
-                                    XposedHelpers.callMethod(sbn, "getPackageContext", sysuiContext) as? Context
-                                } catch (_: Throwable) {
-                                    null
-                                }
-                            }
-                            if (appContext == null) appContext = sysuiContext
-                            setNotificationIcon(statusBarIcon, appContext, param)
-                        } catch (_: Throwable) {
                         }
+                        if (appContext == null) appContext = sysuiContext
+
+                        setNotificationIcon(statusBarIcon, appContext, chain)
+                            ?: chain.proceed()
+                    } catch (t: Throwable) {
+                        XposedEntry.log("error in getIcon hook", t)
+                        chain.proceed()
                     }
                 }
-            )
         } catch (t: Throwable) {
-            log("Failed to hook getIcon(statusBarIcon)")
-            log(t)
+            XposedEntry.log("Failed to hook getIcon(statusBarIcon)", t)
         }
     }
 
-    private fun removeTintForStatusbarIcon(icon: Any?, isNotification: Boolean) {
+    private fun removeTintForStatusbarIcon(icon: Any?, isNotification: Boolean? = null) {
         try {
             if (icon == null) return
-            val thisObj = icon
 
-            val isNotif = isNotification || try {
-                XposedHelpers.getObjectField(thisObj, "mNotification") != null
+            val isNotif = isNotification ?: try {
+                XposedCompat.getObjectField(icon, "mNotification") != null
             } catch (_: Throwable) {
                 false
             }
             if (!isNotif) return
 
             val statusBarIcon = try {
-                XposedHelpers.getObjectField(thisObj, "mIcon")
+                XposedCompat.getObjectField(icon, "mIcon")
             } catch (_: Throwable) {
                 null
             } ?: return
 
             val pkgName = try {
-                XposedHelpers.getObjectField(statusBarIcon, "pkg") as? String
+                XposedCompat.getObjectField(statusBarIcon, "pkg") as? String
             } catch (_: Throwable) {
                 null
             } ?: return
 
             val context = try {
-                XposedHelpers.getObjectField(thisObj, "mContext") as Context
+                XposedCompat.getObjectField(icon, "mContext") as? Context
             } catch (_: Throwable) {
                 null
             } ?: return
@@ -256,24 +248,26 @@ object StatusbarAppIconHook {
         }
     }
 
+    /**
+     * 返回替换后的图标；返回 null 表示不替换，继续走原方法。
+     */
     private fun setNotificationIcon(
         statusBarIcon: Any?,
         context: Context,
-        param: XC_MethodHook.MethodHookParam
-    ) {
+        chain: XposedInterface.Chain
+    ): Drawable? {
         try {
-            if (statusBarIcon == null) return
+            if (statusBarIcon == null) return null
 
-            val pkgName = XposedHelpers.getObjectField(statusBarIcon, "pkg") as? String ?: return
+            val pkgName = XposedCompat.getObjectField(statusBarIcon, "pkg") as? String ?: return null
 
             if (!IconManager.shouldReplaceApp(context, pkgName)) {
-                return
+                return null
             }
 
-            val icon: Drawable = IconManager.getCachedAppIcon(context, pkgName) ?: return
-
-            param.result = icon
+            return IconManager.getCachedAppIcon(context, pkgName) ?: return null
         } catch (_: Throwable) {
+            return null
         }
     }
 }

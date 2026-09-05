@@ -1,6 +1,7 @@
 package com.example.appiconnotif
 
 import android.content.Context
+import android.content.SharedPreferences
 import android.content.pm.ApplicationInfo
 import android.os.Bundle
 import android.view.Menu
@@ -22,6 +23,20 @@ class MainActivity : AppCompatActivity() {
     private lateinit var listView: ListView
     private lateinit var emptyView: TextView
 
+    /**
+     * libxposed API 102：配置由 Xposed 框架托管。
+     * App 端通过 XposedService.getRemotePreferences(group) 写入，
+     * 模块端在 SystemUI 进程内通过 XposedModule.getRemotePreferences(group) 只读。
+     * 服务未绑定（框架不在线 / 非 LSPosed 环境）时回退到本地 SharedPreferences，
+     * 仅作为界面预览，Hook 不读取本地配置。
+     */
+    private val prefs: SharedPreferences
+        get() = App.xposedService?.getRemotePreferences(Config.REMOTE_PREFS_GROUP)
+            ?: getSharedPreferences(Config.REMOTE_PREFS_GROUP, Context.MODE_PRIVATE)
+
+    private val usingRemotePrefs: Boolean
+        get() = App.xposedService != null
+
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         setContentView(R.layout.activity_main)
@@ -30,7 +45,6 @@ class MainActivity : AppCompatActivity() {
         setSupportActionBar(toolbar)
         supportActionBar?.setDisplayHomeAsUpEnabled(false)
 
-        val prefs = getSharedPreferences(Config.PREF_NAME, Context.MODE_PRIVATE)
         selectedPackages.addAll(prefs.getStringSet(Config.KEY_TARGET_PACKAGES, emptySet()) ?: emptySet())
 
         listView = findViewById(R.id.app_list)
@@ -47,14 +61,25 @@ class MainActivity : AppCompatActivity() {
                 selectedPackages.remove(item.packageName)
             }
 
-            prefs.edit()
-                .putStringSet(Config.KEY_TARGET_PACKAGES, selectedPackages)
-                .commit()
+            saveSelection()
 
             Toast.makeText(this, "配置已保存，重启 SystemUI 后生效", Toast.LENGTH_SHORT).show()
         }
 
         listView.adapter = adapter
+    }
+
+    private fun saveSelection() {
+        prefs.edit()
+            .putStringSet(Config.KEY_TARGET_PACKAGES, selectedPackages)
+            .commit()
+        if (!usingRemotePrefs) {
+            Toast.makeText(
+                this,
+                "未连接 Xposed 框架服务，配置仅保存在本地",
+                Toast.LENGTH_LONG
+            ).show()
+        }
     }
 
     override fun onCreateOptionsMenu(menu: Menu): Boolean {
@@ -100,10 +125,7 @@ class MainActivity : AppCompatActivity() {
                 } else {
                     filteredList.forEach { selectedPackages.remove(it.packageName) }
                 }
-                val prefs = getSharedPreferences(Config.PREF_NAME, Context.MODE_PRIVATE)
-                prefs.edit()
-                    .putStringSet(Config.KEY_TARGET_PACKAGES, selectedPackages)
-                    .commit()
+                saveSelection()
                 adapter.notifyDataSetChanged()
                 Toast.makeText(this, if (newChecked) "已全选" else "已取消全选", Toast.LENGTH_SHORT).show()
                 return true

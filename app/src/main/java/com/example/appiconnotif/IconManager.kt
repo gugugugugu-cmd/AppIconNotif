@@ -1,11 +1,10 @@
 package com.example.appiconnotif
 
+import android.content.SharedPreferences
 import android.content.Context
 import android.content.pm.ApplicationInfo
-import android.content.SharedPreferences
 import android.graphics.drawable.Drawable
 import android.util.LruCache
-import com.crossbowffs.remotepreferences.RemotePreferences
 
 object IconManager {
 
@@ -17,17 +16,14 @@ object IconManager {
     @Volatile
     private var remotePrefs: SharedPreferences? = null
 
-    private fun getRemotePrefs(context: Context): SharedPreferences {
-        remotePrefs?.let { return it }
-
-        return synchronized(this) {
-            remotePrefs ?: RemotePreferences(
-                context,
-                Config.PREFERENCE_AUTHORITY,
-                Config.PREF_NAME
-            ).also {
-                remotePrefs = it
-            }
+    /**
+     * 由模块入口在 onModuleLoaded 时注入框架托管的远程配置。
+     * libxposed API 102 中该配置存储于 Xposed 框架内，
+     * App 端通过 io.github.libxposed:service 写入，此处只读。
+     */
+    fun initRemotePrefs(prefs: SharedPreferences) {
+        synchronized(this) {
+            remotePrefs = prefs
         }
     }
 
@@ -36,9 +32,7 @@ object IconManager {
      */
     fun shouldReplaceApp(context: Context, pkgName: String): Boolean {
         val targets = try {
-            getRemotePrefs(context)
-                .getStringSet(Config.KEY_TARGET_PACKAGES, emptySet())
-                ?: emptySet()
+            remotePrefs?.getStringSet(Config.KEY_TARGET_PACKAGES, emptySet()) ?: emptySet()
         } catch (_: Throwable) {
             emptySet()
         }
@@ -49,13 +43,17 @@ object IconManager {
      * 判断是否为第三方应用（带内存缓存防止重复查询）
      */
     fun isThirdPartyApp(context: Context, pkgName: String): Boolean {
-        thirdPartyAppCache[pkgName]?.let { return it }
+        synchronized(thirdPartyAppCache) {
+            thirdPartyAppCache[pkgName]?.let { return it }
+        }
         return try {
             val appInfo = context.packageManager.getApplicationInfo(pkgName, 0)
             val isSystemApp = (appInfo.flags and ApplicationInfo.FLAG_SYSTEM) != 0
             val isUpdatedSystemApp = (appInfo.flags and ApplicationInfo.FLAG_UPDATED_SYSTEM_APP) != 0
             val result = !isSystemApp && !isUpdatedSystemApp
-            thirdPartyAppCache[pkgName] = result
+            synchronized(thirdPartyAppCache) {
+                thirdPartyAppCache[pkgName] = result
+            }
             result
         } catch (_: Throwable) {
             false

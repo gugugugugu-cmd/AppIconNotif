@@ -3,120 +3,118 @@ package com.example.appiconnotif
 import android.app.Notification
 import android.graphics.Color
 import android.graphics.drawable.ColorDrawable
+import android.graphics.drawable.Drawable
 import android.os.Build
 import android.widget.ImageView
-import de.robv.android.xposed.IXposedHookLoadPackage
-import de.robv.android.xposed.XC_MethodHook
-import de.robv.android.xposed.XposedBridge
-import de.robv.android.xposed.XposedHelpers
-import de.robv.android.xposed.callbacks.XC_LoadPackage
+import io.github.libxposed.api.XposedInterface
+import io.github.libxposed.api.XposedModule
 
-class NotificationIconHook : IXposedHookLoadPackage {
+object NotificationIconHook {
 
-    companion object {
-        private const val SYSTEMUI = "com.android.systemui"
+    private const val SYSTEMUI = "com.android.systemui"
 
-        private fun log(msg: String) {
-            XposedBridge.log("AppIconNotif: $msg")
-        }
-
-        private fun log(t: Throwable) {
-            XposedBridge.log(t)
-        }
+    fun hook(module: XposedModule, classLoader: ClassLoader) {
+        hookNotificationHeaderViewWrapper(module, classLoader)
+        StatusbarAppIconHook.hook(module, classLoader)
     }
 
-    override fun handleLoadPackage(lpparam: XC_LoadPackage.LoadPackageParam) {
-        if (lpparam.packageName != SYSTEMUI) return
-
-        hookNotificationHeaderViewWrapper(lpparam)
-        StatusbarAppIconHook.hook(lpparam)
-    }
-
-    private fun hookNotificationHeaderViewWrapper(lpparam: XC_LoadPackage.LoadPackageParam) {
+    /**
+     * API 102 说明：XC_MethodHook.afterHookedMethod 的等价写法是
+     * 在 interceptor 中先 chain.proceed() 再做后处理。
+     */
+    private fun hookNotificationHeaderViewWrapper(module: XposedModule, classLoader: ClassLoader) {
         try {
-            val wrapperClass = XposedHelpers.findClass(
+            val wrapperClass = XposedCompat.findClass(
                 "$SYSTEMUI.statusbar.notification.row.wrapper.NotificationHeaderViewWrapper",
-                lpparam.classLoader
+                classLoader
             )
 
-            val rowClass = XposedHelpers.findClass(
-                "$SYSTEMUI.statusbar.notification.row.ExpandableNotificationRow",
-                lpparam.classLoader
+            val rowClass = try {
+                XposedCompat.findClass(
+                    "$SYSTEMUI.statusbar.notification.row.ExpandableNotificationRow",
+                    classLoader
+                )
+            } catch (_: Throwable) {
+                null
+            }
+
+            // rowClass 为 null 时按“任意单参数方法”匹配
+            val method = XposedCompat.findMethodBestMatch(
+                wrapperClass, "onContentUpdated", rowClass
             )
 
-            XposedHelpers.findAndHookMethod(
-                wrapperClass,
-                "onContentUpdated",
-                rowClass,
-                object : XC_MethodHook() {
-                    override fun afterHookedMethod(param: MethodHookParam) {
-                        try {
-                            val row = param.args[0]
+            module.hook(method)
+                .setExceptionMode(XposedInterface.ExceptionMode.PROTECTIVE)
+                .intercept { chain ->
+                    chain.proceed()
+                    onContentUpdatedAfter(chain.thisObject, chain.getArg(0))
+                    // void 方法显式返回 null
+                    null
+                }
+        } catch (t: Throwable) {
+            XposedEntry.log("Failed to hook NotificationHeaderViewWrapper", t)
+        }
+    }
 
-                            val entry = try {
-                                XposedHelpers.callMethod(row, "getEntry")
-                            } catch (_: Throwable) {
-                                try {
-                                    XposedHelpers.getObjectField(row, "mEntry")
-                                } catch (_: Throwable) {
-                                    XposedHelpers.getObjectField(row, "mEntryAdapter")
-                                }
-                            }
+    private fun onContentUpdatedAfter(wrapper: Any?, row: Any?) {
+        try {
+            if (wrapper == null || row == null) return
 
-                            val sbn = try {
-                                XposedHelpers.callMethod(entry, "getSbn")
-                            } catch (_: Throwable) {
-                                XposedHelpers.getObjectField(entry, "mSbn")
-                            }
+            val entry = try {
+                XposedCompat.callMethod(row, "getEntry")
+            } catch (_: Throwable) {
+                try {
+                    XposedCompat.getObjectField(row, "mEntry")
+                } catch (_: Throwable) {
+                    XposedCompat.getObjectField(row, "mEntryAdapter")
+                }
+            }
 
-                            val notification = XposedHelpers.callMethod(sbn, "getNotification") as Notification
-                            val pkgName = XposedHelpers.callMethod(sbn, "getPackageName") as? String ?: return
+            val sbn = try {
+                XposedCompat.callMethod(entry, "getSbn")
+            } catch (_: Throwable) {
+                XposedCompat.getObjectField(entry, "mSbn")
+            } ?: return
 
-                            val iconView = try {
-                                XposedHelpers.getObjectField(param.thisObject, "mIcon") as ImageView
-                            } catch (_: Throwable) {
-                                return
-                            }
+            val notification = XposedCompat.callMethod(sbn, "getNotification") as Notification
+            val pkgName = XposedCompat.callMethod(sbn, "getPackageName") as? String ?: return
 
-                            if (!IconManager.shouldReplaceApp(iconView.context, pkgName)) return
+            val iconView = try {
+                XposedCompat.getObjectField(wrapper, "mIcon") as? ImageView
+            } catch (_: Throwable) {
+                null
+            } ?: return
 
-                            val appIcon = IconManager.getCachedAppIcon(iconView.context, pkgName) ?: return
+            if (!IconManager.shouldReplaceApp(iconView.context, pkgName)) return
 
-                            val imageIconTagId = iconView.context.resources.getIdentifier(
-                                "image_icon_tag", "id", SYSTEMUI
-                            )
+            val appIcon = IconManager.getCachedAppIcon(iconView.context, pkgName) ?: return
 
-                            applyOriginalAppIcon(iconView, appIcon)
+            val imageIconTagId = iconView.context.resources.getIdentifier(
+                "image_icon_tag", "id", SYSTEMUI
+            )
 
-                            if (imageIconTagId != 0) {
-                                iconView.setTag(imageIconTagId, notification.smallIcon)
-                            }
+            applyOriginalAppIcon(iconView, appIcon)
 
-                            try {
-                                val workProfileImage = XposedHelpers.getObjectField(
-                                    param.thisObject, "mWorkProfileImage"
-                                ) as? ImageView
-                                if (workProfileImage != null) {
-                                    workProfileImage.setImageIcon(notification.smallIcon)
-                                    if (imageIconTagId != 0) {
-                                        workProfileImage.setTag(imageIconTagId, notification.smallIcon)
-                                    }
-                                }
-                            } catch (_: Throwable) {
-                            }
-                        } catch (t: Throwable) {
-                            log(t)
-                        }
+            if (imageIconTagId != 0) {
+                iconView.setTag(imageIconTagId, notification.smallIcon)
+            }
+
+            try {
+                val workProfileImage = XposedCompat.getObjectField(wrapper, "mWorkProfileImage") as? ImageView
+                if (workProfileImage != null) {
+                    workProfileImage.setImageIcon(notification.smallIcon)
+                    if (imageIconTagId != 0) {
+                        workProfileImage.setTag(imageIconTagId, notification.smallIcon)
                     }
                 }
-            )
+            } catch (_: Throwable) {
+            }
         } catch (t: Throwable) {
-            log("Failed to hook NotificationHeaderViewWrapper")
-            log(t)
+            XposedEntry.log("AppIconNotif: error in NotificationHeaderViewWrapper hook", t)
         }
     }
 
-    private fun applyOriginalAppIcon(imageView: ImageView, drawable: android.graphics.drawable.Drawable) {
+    private fun applyOriginalAppIcon(imageView: ImageView, drawable: Drawable) {
         clearIconStyling(imageView)
         try {
             imageView.setImageIcon(null)
@@ -162,12 +160,12 @@ class NotificationIconHook : IXposedHookLoadPackage {
         }
 
         try {
-            XposedHelpers.setObjectField(imageView, "mApplyCircularCrop", false)
+            XposedCompat.setObjectField(imageView, "mApplyCircularCrop", false)
         } catch (_: Throwable) {
         }
 
         try {
-            XposedHelpers.callMethod(imageView, "setApplyCircularCrop", false)
+            XposedCompat.callMethod(imageView, "setApplyCircularCrop", false)
         } catch (_: Throwable) {
         }
     }
