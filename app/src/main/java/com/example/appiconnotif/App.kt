@@ -3,14 +3,14 @@ package com.example.appiconnotif
 import android.app.Application
 import io.github.libxposed.service.XposedService
 import io.github.libxposed.service.XposedServiceHelper
+import java.util.concurrent.CopyOnWriteArraySet
 
 /**
  * 模块 App 端 Application。
  *
- * libxposed API 102 不再使用 RemotePreferences 跨进程共享配置，
- * 而是由 Xposed 框架统一托管配置文件：App 端通过 io.github.libxposed:service
- * 绑定框架服务后调用 XposedService.getRemotePreferences() 写入，
- * 模块端（SystemUI 进程内）通过 XposedModule.getRemotePreferences() 只读访问。
+ * 本地 SharedPreferences 用于保证界面状态持久化；XposedService 远程配置
+ * 用于 SystemUI Hook 读取。服务绑定是异步的，因此需要通知当前 Activity
+ * 及时同步本地配置到框架。
  */
 class App : Application(), XposedServiceHelper.OnServiceListener {
 
@@ -18,6 +18,21 @@ class App : Application(), XposedServiceHelper.OnServiceListener {
         @Volatile
         var xposedService: XposedService? = null
             private set
+
+        private val serviceListeners = CopyOnWriteArraySet<(XposedService?) -> Unit>()
+
+        fun addServiceListener(listener: (XposedService?) -> Unit) {
+            serviceListeners.add(listener)
+            listener(xposedService)
+        }
+
+        fun removeServiceListener(listener: (XposedService?) -> Unit) {
+            serviceListeners.remove(listener)
+        }
+
+        private fun notifyServiceChanged(service: XposedService?) {
+            serviceListeners.forEach { it(service) }
+        }
     }
 
     override fun onCreate() {
@@ -27,11 +42,13 @@ class App : Application(), XposedServiceHelper.OnServiceListener {
 
     override fun onServiceBind(service: XposedService) {
         xposedService = service
+        notifyServiceChanged(service)
     }
 
     override fun onServiceDied(service: XposedService) {
         if (xposedService == service) {
             xposedService = null
+            notifyServiceChanged(null)
         }
     }
 }

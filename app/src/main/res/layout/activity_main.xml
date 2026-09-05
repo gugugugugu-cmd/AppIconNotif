@@ -4,20 +4,21 @@
     xmlns:app="http://schemas.android.com/apk/res-auto"
     android:layout_width="match_parent"
     android:layout_height="match_parent"
-    android:background="#F5F5F5">
+    android:background="@color/aosp_surface">
 
     <com.google.android.material.appbar.AppBarLayout
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
-        android:elevation="4dp"
-        android:theme="@style/ThemeOverlay.AppCompat.Dark.ActionBar">
+        android:background="@color/aosp_surface"
+        android:elevation="4dp">
 
         <androidx.appcompat.widget.Toolbar
             android:id="@+id/toolbar"
             android:layout_width="match_parent"
             android:layout_height="?attr/actionBarSize"
-            android:background="?attr/colorPrimary"
-            app:titleTextColor="@android:color/white"
+            android:background="@color/aosp_surface"
+            android:elevation="0dp"
+            app:titleTextColor="@color/aosp_primary_text"
             app:popupTheme="@style/ThemeOverlay.AppCompat.Light" />
 
     </com.google.android.material.appbar.AppBarLayout>
@@ -26,13 +27,13 @@
         android:id="@+id/app_list"
         android:layout_width="match_parent"
         android:layout_height="match_parent"
+        android:background="@color/aosp_surface"
+        android:clipToPadding="false"
         android:divider="@null"
         android:dividerHeight="0dp"
-        android:paddingTop="0dp"
-        android:paddingBottom="0dp"
-        android:clipToPadding="false"
+        android:paddingTop="8dp"
+        android:paddingBottom="8dp"
         android:scrollbarStyle="outsideOverlay"
-        android:background="@android:color/white"
         app:layout_behavior="@string/appbar_scrolling_view_behavior" />
 
     <TextView
@@ -42,7 +43,7 @@
         android:gravity="center"
         android:padding="24dp"
         android:text="未找到匹配的应用"
-        android:textColor="#666666"
+        android:textColor="@color/aosp_secondary_text"
         android:textSize="16sp"
         app:layout_behavior="@string/appbar_scrolling_view_behavior" />
 

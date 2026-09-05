@@ -1,0 +1,9 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- 接近 AOSP Settings 的浅色表面与文字层级 -->
+    <color name="aosp_surface">#FFFEFEFF</color>
+    <color name="aosp_primary_text">#FF202124</color>
+    <color name="aosp_secondary_text">#FF5F6368</color>
+    <color name="aosp_divider">#FFE0E0E0</color>
+    <color name="aosp_control_tint">#FF5F6368</color>
+</resources>

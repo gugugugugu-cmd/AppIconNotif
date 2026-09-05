@@ -3,28 +3,28 @@
     android:layout_width="match_parent"
     android:layout_height="wrap_content"
     android:orientation="vertical"
-    android:background="@android:color/white">
+    android:background="@color/aosp_surface">
 
-    <!-- 条目主内容，整行点击反馈 -->
     <LinearLayout
         android:layout_width="match_parent"
-        android:layout_height="64dp"
+        android:layout_height="72dp"
         android:gravity="center_vertical"
         android:orientation="horizontal"
-        android:paddingStart="16dp"
+        android:paddingStart="20dp"
         android:paddingEnd="16dp"
-        android:background="?attr/selectableItemBackground">  <!-- 移到这里 -->
+        android:background="?attr/selectableItemBackground">
 
         <ImageView
             android:id="@+id/app_icon"
             android:layout_width="40dp"
             android:layout_height="40dp"
-            android:contentDescription="应用图标" />
+            android:contentDescription="应用图标"
+            android:scaleType="centerInside" />
 
         <LinearLayout
             android:layout_width="0dp"
             android:layout_height="wrap_content"
-            android:layout_marginStart="12dp"
+            android:layout_marginStart="20dp"
             android:layout_weight="1"
             android:orientation="vertical">
 
@@ -32,17 +32,20 @@
                 android:id="@+id/app_label"
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
+                android:ellipsize="end"
                 android:singleLine="true"
-                android:textSize="16sp"
-                android:textColor="#333333" />
+                android:textColor="@color/aosp_primary_text"
+                android:textSize="16sp" />
 
             <TextView
                 android:id="@+id/app_package"
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
+                android:layout_marginTop="2dp"
+                android:ellipsize="end"
                 android:singleLine="true"
-                android:textSize="12sp"
-                android:textColor="#888888" />
+                android:textColor="@color/aosp_secondary_text"
+                android:textSize="13sp" />
 
         </LinearLayout>
 
@@ -50,14 +53,15 @@
             android:id="@+id/app_checkbox"
             android:layout_width="wrap_content"
             android:layout_height="wrap_content"
+            android:buttonTint="@color/aosp_control_tint"
             android:clickable="false"
             android:focusable="false" />
     </LinearLayout>
 
-    <!-- 底部分割线 -->
     <View
         android:layout_width="match_parent"
         android:layout_height="1dp"
-        android:background="#E0E0E0"
-        android:layout_marginStart="72dp" />  <!-- 从图标右侧开始对齐，可调整 -->
+        android:layout_marginStart="80dp"
+        android:background="@color/aosp_divider" />
+
 </LinearLayout>
